@@ -133,4 +133,25 @@ describe("WorkflowReloader (SPEC §6.2)", () => {
     expect(reloader.promptTemplate()).toBe("good prompt");
     expect(onApply).not.toHaveBeenCalled();
   });
+
+  it("serialises concurrent reloads — second call returns false, follow-up runs after first finishes", async () => {
+    const { path, reloader, onApply } = await setup("first prompt", 2);
+    await writeFile(path, workflowFile("second prompt", 5));
+
+    // Both calls are made synchronously (no await between them). reload() sets
+    // reloadInFlight before its first internal await, so the second call is
+    // guaranteed to find it set and return false immediately.
+    const first = reloader.reload();
+    const second = reloader.reload();
+
+    expect(await second).toBe(false);
+    expect(await first).toBe(true);
+    expect(reloader.promptTemplate()).toBe("second prompt");
+
+    // The pending flag schedules a follow-up reload; wait for it to finish.
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Follow-up re-reads the file (still "second prompt") and calls onApply again.
+    expect(onApply).toHaveBeenCalledTimes(2);
+  });
 });

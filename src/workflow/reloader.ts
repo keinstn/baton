@@ -19,6 +19,8 @@ export interface WorkflowState {
  */
 export class WorkflowReloader {
   private current: WorkflowState;
+  private reloadInFlight: Promise<boolean> | null = null;
+  private reloadPending = false;
 
   constructor(
     private readonly path: string,
@@ -41,8 +43,27 @@ export class WorkflowReloader {
   /**
    * Re-read and re-apply the workflow file. Returns true when the new state was
    * adopted, false when the previous last-known-good state was retained.
+   *
+   * Concurrent calls are serialised: a second call while one is in flight sets a
+   * pending flag so exactly one follow-up reload runs after the current one
+   * finishes, preventing a slower stale reload from overwriting a newer result.
    */
   async reload(): Promise<boolean> {
+    if (this.reloadInFlight) {
+      this.reloadPending = true;
+      return false;
+    }
+    this.reloadInFlight = this._doReload().finally(() => {
+      this.reloadInFlight = null;
+      if (this.reloadPending) {
+        this.reloadPending = false;
+        void this.reload();
+      }
+    });
+    return this.reloadInFlight;
+  }
+
+  private async _doReload(): Promise<boolean> {
     let workflow: Awaited<ReturnType<typeof loadWorkflow>>;
     try {
       workflow = await loadWorkflow(this.path);
