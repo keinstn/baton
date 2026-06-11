@@ -1,9 +1,7 @@
 #!/usr/bin/env node
 import { watch } from "node:fs";
 import path from "node:path";
-import { ClaudeCodeRunner } from "./agent/claude-code.js";
-import { CopilotRunner } from "./agent/copilot.js";
-import type { AgentRunner } from "./agent/runner.js";
+import { createRunner } from "./agent/factory.js";
 import { buildConfig, validateDispatchConfig } from "./config/schema.js";
 import { isBatonError } from "./errors.js";
 import { startHttpServer } from "./observability/http.js";
@@ -86,10 +84,7 @@ async function main(): Promise<void> {
 
   const tracker = new GitHubProjectsClient(config.tracker, fetch, logger);
   const workspaces = new WorkspaceManager(config, logger);
-  const runner: AgentRunner =
-    config.agent.kind === "copilot"
-      ? new CopilotRunner(config.copilot, logger)
-      : new ClaudeCodeRunner(config.claudeCode, logger);
+  const { runner, applyReloadedConfig } = createRunner(config, logger);
 
   // SPEC §6.2: hot-reload WORKFLOW.md, keeping the last known good config on
   // failure. The orchestrator/worker read config + prompt through these getters,
@@ -100,11 +95,7 @@ async function main(): Promise<void> {
     logger,
     (next) => {
       tracker.applyConfig(next.tracker);
-      if (runner instanceof CopilotRunner) {
-        runner.applyConfig(next.copilot);
-      } else if (runner instanceof ClaudeCodeRunner) {
-        runner.applyConfig(next.claudeCode);
-      }
+      applyReloadedConfig(next);
       workspaces.applyConfig(next);
     },
   );

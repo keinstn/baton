@@ -1,9 +1,16 @@
-import { type ChildProcess, spawn } from "node:child_process";
-import { stat } from "node:fs/promises";
-import { createInterface } from "node:readline";
 import type { ClaudeCodeConfig } from "../config/schema.js";
-import { BatonError } from "../errors.js";
+import {
+  DISPLAY_TEXT_MAX_BYTES,
+  ERROR_MESSAGE_MAX_BYTES,
+} from "../constants.js";
 import type { Logger } from "../observability/logger.js";
+import { now } from "../util.js";
+import {
+  ensureWorkspaceDir,
+  runSubprocess,
+  shellQuote,
+  stopSessionProcess,
+} from "./process.js";
 import type {
   AgentEvent,
   AgentEventCallback,
@@ -12,14 +19,8 @@ import type {
   TurnResult,
 } from "./runner.js";
 
-/** Quote a string for safe interpolation into a bash -lc command line. */
-export function shellQuote(s: string): string {
-  return `'${s.replace(/'/g, "'\\''")}'`;
-}
-
-function now(): string {
-  return new Date().toISOString();
-}
+// Re-exported for adapter authors and existing importers (e.g. copilot.ts, tests).
+export { shellQuote };
 
 /**
  * Claude Code adapter, CLI subprocess mode (SPEC §10.1).
@@ -77,19 +78,7 @@ export class ClaudeCodeRunner implements AgentRunner {
   }
 
   async startSession(workspace: string): Promise<AgentSession> {
-    // SPEC §9.5 Invariant 1: validate cwd before launching the agent.
-    let isDir = false;
-    try {
-      isDir = (await stat(workspace)).isDirectory();
-    } catch {
-      isDir = false;
-    }
-    if (!isDir) {
-      throw new BatonError(
-        "invalid_workspace_cwd",
-        `not a directory: ${workspace}`,
-      );
-    }
+    await ensureWorkspaceDir(workspace);
     return { workspace, agentSessionId: null, proc: null, turnNumber: 0 };
   }
 
@@ -102,62 +91,13 @@ export class ClaudeCodeRunner implements AgentRunner {
     // so the agent keeps its context (SPEC §7.1, §10.1).
     session.turnNumber += 1;
     const resumeId = session.turnNumber > 1 ? session.agentSessionId : null;
-    return new Promise((resolvePromise) => {
-      // detached: own process group, so timeout/stop kills the whole agent
-      // process tree (not just the bash -lc wrapper).
-      const proc = spawn("bash", ["-lc", this.buildCommand(resumeId)], {
-        cwd: session.workspace,
-        stdio: ["pipe", "pipe", "pipe"],
-        detached: true,
-      });
-      session.proc = proc;
-
-      proc.stdin.on("error", () => {
-        // Process may exit before consuming stdin; close handler reports it.
-      });
-      proc.stdin.write(prompt);
-      proc.stdin.end();
-
-      let stderrTail = "";
-      proc.stderr.on("data", (chunk: Buffer) => {
-        stderrTail = (stderrTail + chunk.toString("utf8")).slice(-2000);
-      });
-
-      let result: TurnResult | null = null;
-      let timedOut = false;
-      const timer = setTimeout(() => {
-        timedOut = true;
-        killProcessTree(proc);
-      }, this.cfg.turnTimeoutMs);
-
-      const rl = createInterface({ input: proc.stdout });
-      rl.on("line", (line) => {
-        const turnResult = this.handleLine(session, line, onEvent);
-        if (turnResult) result = turnResult;
-      });
-
-      proc.on("error", (err) => {
-        clearTimeout(timer);
-        resolvePromise({ ok: false, error: `startup_failed: ${String(err)}` });
-      });
-      proc.on("close", (code) => {
-        clearTimeout(timer);
-        session.proc = null;
-        if (timedOut) {
-          onEvent({
-            event: "turn_cancelled",
-            timestamp: now(),
-            message: "turn_timeout",
-          });
-          resolvePromise({ ok: false, error: "turn_timeout" });
-        } else if (result) {
-          resolvePromise(result);
-        } else {
-          const error = `process_exit code=${code} stderr=${stderrTail.slice(-500)}`;
-          onEvent({ event: "turn_failed", timestamp: now(), message: error });
-          resolvePromise(code === 0 ? { ok: true } : { ok: false, error });
-        }
-      });
+    // Prompt is delivered on stdin to avoid argv length limits (SPEC §10.1).
+    return runSubprocess(session, {
+      command: this.buildCommand(resumeId),
+      timeoutMs: this.cfg.turnTimeoutMs,
+      stdin: prompt,
+      onEvent,
+      onLine: (line) => this.handleLine(session, line, onEvent),
     });
   }
 
@@ -176,7 +116,7 @@ export class ClaudeCodeRunner implements AgentRunner {
       onEvent({
         event: "malformed",
         timestamp: now(),
-        message: trimmed.slice(0, 200),
+        message: trimmed.slice(0, DISPLAY_TEXT_MAX_BYTES),
       });
       return null;
     }
@@ -213,7 +153,7 @@ export class ClaudeCodeRunner implements AgentRunner {
           timestamp: now(),
           message:
             typeof msg.result === "string"
-              ? msg.result.slice(0, 500)
+              ? msg.result.slice(0, ERROR_MESSAGE_MAX_BYTES)
               : undefined,
           ...(usage ? { usage } : {}),
         });
@@ -223,7 +163,7 @@ export class ClaudeCodeRunner implements AgentRunner {
               ok: false,
               error:
                 typeof msg.result === "string"
-                  ? msg.result.slice(0, 500)
+                  ? msg.result.slice(0, ERROR_MESSAGE_MAX_BYTES)
                   : `result subtype=${String(msg.subtype)}`,
             };
       }
@@ -235,28 +175,8 @@ export class ClaudeCodeRunner implements AgentRunner {
   }
 
   async stopSession(session: AgentSession): Promise<void> {
-    if (
-      session.proc &&
-      session.proc.exitCode === null &&
-      !session.proc.killed
-    ) {
-      killProcessTree(session.proc);
-    }
-    session.proc = null;
+    stopSessionProcess(session);
   }
-}
-
-/** Kill the agent's whole process group (requires spawn with detached: true). */
-function killProcessTree(proc: ChildProcess): void {
-  if (proc.pid !== undefined) {
-    try {
-      process.kill(-proc.pid, "SIGKILL");
-      return;
-    } catch {
-      // Fall through to single-process kill.
-    }
-  }
-  proc.kill("SIGKILL");
 }
 
 function readUsage(
@@ -278,7 +198,7 @@ function summarizeAssistant(msg: Record<string, unknown>): AgentEvent[] {
       events.push({
         event: "notification",
         timestamp: now(),
-        message: block.text.slice(0, 200),
+        message: block.text.slice(0, DISPLAY_TEXT_MAX_BYTES),
       });
     } else if (block.type === "tool_use" && typeof block.name === "string") {
       events.push({
