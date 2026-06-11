@@ -217,6 +217,12 @@ async function runAttempt(issue: Issue, workspace: string, prompt: string, onEve
 - WORKFLOW.md ホットリロード(§6.2)、起動時 terminal workspace 掃除(§8.6)
 - §17.1-17.4 のテスト整備
 
+  > **ホットリロードのスコープ制限(Phase 2時点):**
+  > `tracker.*`・`polling.*`・`agent.*`・プロンプトテンプレートの変更は次 tick から反映される。
+  > `claude_code.*` と `workspace.*`(root・hooks)の変更はプロセス再起動が必要。
+  > これらは `ClaudeCodeRunner` と `WorkspaceManager` がコンストラクタで設定を固定しているため。
+  > Phase 3 で両クラスに `applyConfig` を追加して対応予定。
+
 **Phase 3 — 拡張(SPEC §18.2)**
 
 - Copilot アダプタ、state 別並列度

@@ -159,6 +159,26 @@ describe("project resolution (SPEC §11.2)", () => {
     });
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("applyConfig swaps tracker config and invalidates the project cache (SPEC §6.2)", async () => {
+    const { client: c, fetchMock } = client([
+      gqlResponse(PROJECT_DATA),
+      gqlResponse(itemsPage([], null, false)),
+      gqlResponse(PROJECT_DATA),
+      gqlResponse(itemsPage([], null, false)),
+    ]);
+    await c.fetchCandidateIssues(); // resolves project for owner "acme"
+    c.applyConfig(trackerConfig({ owner: "newcorp" }));
+    await c.fetchCandidateIssues(); // must re-resolve after cache invalidation
+
+    expect(sentQuery(fetchMock, 0)).toContain("BatonProject");
+    expect(sentQuery(fetchMock, 2)).toContain("BatonProject");
+    const reresolve = fetchMock.mock.calls[2]?.[1] as { body: string };
+    const vars = (
+      JSON.parse(reresolve.body) as { variables: { owner: string } }
+    ).variables;
+    expect(vars.owner).toBe("newcorp");
+  });
 });
 
 describe("candidate fetch and normalization (SPEC §11.2-11.3)", () => {

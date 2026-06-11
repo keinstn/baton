@@ -142,7 +142,7 @@ export class GitHubProjectsClient implements TrackerClient {
   private meta: ProjectMeta | null = null;
 
   constructor(
-    private readonly cfg: TrackerConfig,
+    private cfg: TrackerConfig,
     private readonly fetchFn: FetchFn = fetch,
     private readonly logger?: Logger,
   ) {}
@@ -150,6 +150,12 @@ export class GitHubProjectsClient implements TrackerClient {
   /** Drop the cached project/field resolution (SPEC §11.2: refresh on reload/validation failure). */
   invalidateProjectCache(): void {
     this.meta = null;
+  }
+
+  /** Adopt a reloaded tracker config and drop the project cache (SPEC §6.2, §11.2). */
+  applyConfig(cfg: TrackerConfig): void {
+    this.cfg = cfg;
+    this.invalidateProjectCache();
   }
 
   private async gql(
