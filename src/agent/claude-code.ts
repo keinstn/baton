@@ -31,7 +31,7 @@ function now(): string {
 export class ClaudeCodeRunner implements AgentRunner {
   constructor(
     private cfg: ClaudeCodeConfig,
-    readonly _logger: Logger,
+    private readonly _logger: Logger,
   ) {}
 
   /** Apply a new config; takes effect on the next turn dispatch (SPEC §6.2). */
