@@ -2,6 +2,8 @@
 import { watch } from "node:fs";
 import path from "node:path";
 import { ClaudeCodeRunner } from "./agent/claude-code.js";
+import { CopilotRunner } from "./agent/copilot.js";
+import type { AgentRunner } from "./agent/runner.js";
 import { buildConfig, validateDispatchConfig } from "./config/schema.js";
 import { isBatonError } from "./errors.js";
 import { Logger } from "./observability/logger.js";
@@ -33,8 +35,8 @@ async function main(): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  if (config.agent.kind !== "claude_code") {
-    logger.error("agent kind not implemented in Phase 1", {
+  if (config.agent.kind !== "claude_code" && config.agent.kind !== "copilot") {
+    logger.error("agent kind not supported", {
       kind: config.agent.kind,
     });
     process.exitCode = 1;
@@ -43,7 +45,10 @@ async function main(): Promise<void> {
 
   const tracker = new GitHubProjectsClient(config.tracker, fetch, logger);
   const workspaces = new WorkspaceManager(config, logger);
-  const runner = new ClaudeCodeRunner(config.claudeCode, logger);
+  const runner: AgentRunner =
+    config.agent.kind === "copilot"
+      ? new CopilotRunner(config.copilot, logger)
+      : new ClaudeCodeRunner(config.claudeCode, logger);
 
   // SPEC §6.2: hot-reload WORKFLOW.md, keeping the last known good config on
   // failure. The orchestrator/worker read config + prompt through these getters,
@@ -54,7 +59,11 @@ async function main(): Promise<void> {
     logger,
     (next) => {
       tracker.applyConfig(next.tracker);
-      runner.applyConfig(next.claudeCode);
+      if (runner instanceof CopilotRunner) {
+        runner.applyConfig(next.copilot);
+      } else if (runner instanceof ClaudeCodeRunner) {
+        runner.applyConfig(next.claudeCode);
+      }
       workspaces.applyConfig(next);
     },
   );
