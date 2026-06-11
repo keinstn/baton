@@ -56,6 +56,52 @@ To use `baton` as a global command, link it after building:
 npm link
 ```
 
+## Board Setup
+
+Before running Baton, create and configure a GitHub Projects v2 board.
+
+**1. Create a project board**
+
+Navigate to your organization or user profile → **Projects** → **New project**. Choose the
+**Board** template so issues are arranged in columns.
+
+**2. Configure Status columns**
+
+A new board starts with `Todo`, `In Progress`, and `Done`. Add any extra states Baton needs —
+for example `In Review` as the handoff state — by clicking **+** at the right edge of the board
+and selecting **New option**.
+
+The column names must exactly match the values you set in `WORKFLOW.md`:
+
+```yaml
+tracker:
+  active_states: [Todo, In Progress]   # Baton picks up issues in these states
+  handoff_state: In Review             # Agent moves the issue here when done
+```
+
+**3. Create a label**
+
+Go to the target repository → **Issues** → **Labels** → **New label**. Create a label named
+`ai-ready` (or whatever you list under `required_labels` in `WORKFLOW.md`). Baton only
+dispatches issues that carry this label.
+
+**4. Generate a Personal Access Token**
+
+Go to **Settings** → **Developer settings** → **Personal access tokens** → **Fine-grained tokens**
+and create a token with:
+
+- **Projects** — Read and write
+- Repository access for the repos your issues live in
+
+Export it before running Baton:
+
+```sh
+export GITHUB_TOKEN=ghp_...
+```
+
+The `project_number` for `WORKFLOW.md` is the trailing integer in the project URL
+(e.g. `https://github.com/orgs/my-org/projects/5` → `project_number: 5`).
+
 ## Usage
 
 **1. Create a `WORKFLOW.md`**
