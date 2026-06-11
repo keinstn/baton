@@ -45,7 +45,7 @@ async function main(): Promise<void> {
 
   const tracker = new GitHubProjectsClient(config.tracker, fetch, logger);
   const workspaces = new WorkspaceManager(config, logger);
-  const { runner, applyReloadedConfig } = createRunner(config, logger);
+  const { runner, applyReloadedConfig } = createRunner(config);
 
   // SPEC §6.2: hot-reload WORKFLOW.md, keeping the last known good config on
   // failure. The orchestrator/worker read config + prompt through these getters,

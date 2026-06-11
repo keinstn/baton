@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { CopilotConfig } from "../config/schema.js";
 import { DISPLAY_TEXT_MAX_BYTES } from "../constants.js";
-import type { Logger } from "../observability/logger.js";
 import { now } from "../util.js";
 import {
   ensureWorkspaceDir,
@@ -41,10 +40,7 @@ const DEFAULT_PROMPT_MAX_BYTES = 128 * 1024;
  * counts, and SPEC §10.2 forbids fabricating those.
  */
 export class CopilotRunner implements AgentRunner {
-  constructor(
-    private cfg: CopilotConfig,
-    private readonly _logger: Logger,
-  ) {}
+  constructor(private cfg: CopilotConfig) {}
 
   /** Apply a new config; takes effect on the next turn dispatch (SPEC §6.2). */
   applyConfig(cfg: CopilotConfig): void {

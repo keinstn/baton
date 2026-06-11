@@ -1,5 +1,4 @@
 import type { BatonConfig } from "../config/schema.js";
-import type { Logger } from "../observability/logger.js";
 import { ClaudeCodeRunner } from "./claude-code.js";
 import { CopilotRunner } from "./copilot.js";
 import type { AgentRunner } from "./runner.js";
@@ -16,18 +15,15 @@ export interface RunnerHandle {
  * keeps runner selection in one place and frees callers from `instanceof`
  * branching when hot-reloading config.
  */
-export function createRunner(
-  config: BatonConfig,
-  logger: Logger,
-): RunnerHandle {
+export function createRunner(config: BatonConfig): RunnerHandle {
   if (config.agent.kind === "copilot") {
-    const runner = new CopilotRunner(config.copilot, logger);
+    const runner = new CopilotRunner(config.copilot);
     return {
       runner,
       applyReloadedConfig: (next) => runner.applyConfig(next.copilot),
     };
   }
-  const runner = new ClaudeCodeRunner(config.claudeCode, logger);
+  const runner = new ClaudeCodeRunner(config.claudeCode);
   return {
     runner,
     applyReloadedConfig: (next) => runner.applyConfig(next.claudeCode),

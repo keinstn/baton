@@ -242,13 +242,13 @@ describe("candidate fetch and normalization (SPEC §11.2-11.3)", () => {
       trackerConfig({ priorityField: "Priority" }),
     );
     const issues = await c.fetchCandidateIssues();
-    const issue = issues[0]!;
-    expect(issue.labels).toEqual(["bug", "ai-ready"]);
-    expect(issue.priority).toBe(2);
-    expect(issue.closed).toBe(true);
-    expect(issue.repository).toBe("acme/repo");
-    expect(issue.identifier).toBe("repo-1");
-    expect(issue.blockedBy).toEqual([]);
+    const issue = issues[0];
+    expect(issue?.labels).toEqual(["bug", "ai-ready"]);
+    expect(issue?.priority).toBe(2);
+    expect(issue?.closed).toBe(true);
+    expect(issue?.repository).toBe("acme/repo");
+    expect(issue?.identifier).toBe("repo-1");
+    expect(issue?.blockedBy).toEqual([]);
   });
 
   it("treats hasNextPage without endCursor as a pagination integrity error", async () => {

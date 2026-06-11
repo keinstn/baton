@@ -450,11 +450,11 @@ describe("agent updates and token accounting (SPEC §13.5)", () => {
       usage: { inputTokens: 100, outputTokens: 40 },
     });
 
-    const entry = orchestrator.running.get(issue.id)!;
-    expect(entry.sessionId).toBe("sess-1");
-    expect(entry.lastEvent).toBe("turn_completed");
-    expect(entry.inputTokens).toBe(100);
-    expect(entry.totalTokens).toBe(140);
+    const entry = orchestrator.running.get(issue.id);
+    expect(entry?.sessionId).toBe("sess-1");
+    expect(entry?.lastEvent).toBe("turn_completed");
+    expect(entry?.inputTokens).toBe(100);
+    expect(entry?.totalTokens).toBe(140);
     expect(orchestrator.totals.totalTokens).toBe(140);
   });
 });
