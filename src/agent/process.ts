@@ -127,6 +127,7 @@ export function runSubprocess(
       clearTimeout(timer);
       if (resolved) return;
       resolved = true;
+      session.proc = null;
       resolvePromise({ ok: false, error: `startup_failed: ${String(err)}` });
     });
     proc.on("close", (code) => {
