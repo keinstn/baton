@@ -128,6 +128,7 @@ agent:
 
 ```sh
 export GITHUB_TOKEN=ghp_...   # GitHub PAT with Projects read scope
+export LOG_LEVEL=info         # Log verbosity: debug | info | warn | error (default: info)
 ```
 
 **3. Run Baton**
@@ -142,7 +143,9 @@ baton WORKFLOW.md
 |---|---|
 | `--port N` / `-p N` | Enable the HTTP dashboard on port N (overrides `server.port` in front matter) |
 
-Baton polls the board on every `polling.interval_ms` tick, dispatches eligible issues to agent workers, and logs structured JSON to stdout. Send `SIGINT` or `SIGTERM` to shut down gracefully.
+Baton polls the board on every `polling.interval_ms` tick, dispatches eligible issues to agent workers, and logs structured JSON to stderr. Send `SIGINT` or `SIGTERM` to shut down gracefully.
+
+Set `LOG_LEVEL=debug` to enable verbose diagnostic output (subprocess PIDs, agent events, GitHub API timing, tick cycle details).
 
 ## How it works (one paragraph)
 
