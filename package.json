@@ -13,6 +13,7 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
+    "format": "biome format --write .",
     "lint": "biome check .",
     "test": "vitest run"
   },
