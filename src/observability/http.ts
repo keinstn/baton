@@ -4,11 +4,8 @@ import {
   type Server,
   type ServerResponse,
 } from "node:http";
-import type {
-  OrchestratorSnapshot,
-  SnapshotRetrying,
-  SnapshotRunning,
-} from "../orchestrator/orchestrator.js";
+import type { OrchestratorSnapshot } from "../orchestrator/orchestrator.js";
+import { renderDashboard } from "./dashboard.js";
 import type { Logger } from "./logger.js";
 
 export interface HttpServerDeps {
@@ -80,6 +77,67 @@ function closeServer(server: Server): Promise<void> {
   });
 }
 
+interface RouteContext {
+  res: ServerResponse;
+  deps: HttpServerDeps;
+  method: string;
+  /** Capture groups from the route pattern (empty for exact-path routes). */
+  params: string[];
+}
+
+interface Route {
+  /** Return capture groups when `path` matches this route, else null. */
+  match(path: string): string[] | null;
+  /** Methods this route serves; anything else yields 405 + Allow. */
+  methods: string[];
+  handle(ctx: RouteContext): void;
+}
+
+const exact =
+  (p: string) =>
+  (path: string): string[] | null =>
+    path === p ? [] : null;
+
+const pattern =
+  (re: RegExp) =>
+  (path: string): string[] | null => {
+    const m = re.exec(path);
+    return m ? m.slice(1) : null;
+  };
+
+/**
+ * Route table, matched top-to-bottom. The exact `/api/v1/state` and
+ * `/api/v1/refresh` routes precede the `/api/v1/<identifier>` pattern, so they
+ * win for those paths (a wrong method on them yields 405, not a fall-through).
+ */
+const routes: Route[] = [
+  {
+    match: exact("/"),
+    methods: ["GET", "HEAD"],
+    handle: ({ res, deps, method }) =>
+      sendDashboard(res, deps.snapshot(), method === "HEAD"),
+  },
+  {
+    match: exact("/api/v1/state"),
+    methods: ["GET", "HEAD"],
+    handle: ({ res, deps, method }) =>
+      sendJson(res, 200, deps.snapshot(), method === "HEAD"),
+  },
+  {
+    match: exact("/api/v1/refresh"),
+    methods: ["POST"],
+    handle: ({ res, deps }) => {
+      deps.refresh();
+      sendJson(res, 202, { accepted: true });
+    },
+  },
+  {
+    match: pattern(/^\/api\/v1\/([^/]+)$/),
+    methods: ["GET", "HEAD"],
+    handle: handleIdentifier,
+  },
+];
+
 async function handleRequest(
   req: IncomingMessage,
   res: ServerResponse,
@@ -90,67 +148,50 @@ async function handleRequest(
   // Parse path only; query string is unused (observability/control surface).
   const path = url.split("?", 1)[0] ?? "/";
 
-  if (path === "/") {
-    if (method !== "GET" && method !== "HEAD") {
-      return sendMethodNotAllowed(res, ["GET", "HEAD"]);
+  for (const route of routes) {
+    const params = route.match(path);
+    if (!params) continue;
+    if (!route.methods.includes(method)) {
+      return sendMethodNotAllowed(res, route.methods);
     }
-    return sendDashboard(res, deps.snapshot(), method === "HEAD");
-  }
-
-  if (path === "/api/v1/state") {
-    if (method !== "GET" && method !== "HEAD") {
-      return sendMethodNotAllowed(res, ["GET", "HEAD"]);
-    }
-    return sendJson(res, 200, deps.snapshot(), method === "HEAD");
-  }
-
-  if (path === "/api/v1/refresh") {
-    if (method !== "POST") return sendMethodNotAllowed(res, ["POST"]);
-    deps.refresh();
-    return sendJson(res, 202, { accepted: true });
-  }
-
-  // /api/v1/<identifier>
-  const idMatch = /^\/api\/v1\/([^/]+)$/.exec(path);
-  if (idMatch) {
-    if (method !== "GET" && method !== "HEAD") {
-      return sendMethodNotAllowed(res, ["GET", "HEAD"]);
-    }
-    let identifier: string;
-    try {
-      identifier = decodeURIComponent(idMatch[1] as string);
-    } catch {
-      return sendError(res, 400, "bad_request", "malformed identifier in path");
-    }
-    if (identifier === "state" || identifier === "refresh") {
-      // Already handled above; defensive guard.
-      return sendError(res, 404, "not_found", `no resource at ${path}`);
-    }
-    const snap = deps.snapshot();
-    const running = snap.running.find((r) => r.identifier === identifier);
-    const retrying = snap.retrying.find((r) => r.identifier === identifier);
-    if (!running && !retrying) {
-      return sendError(
-        res,
-        404,
-        "not_found",
-        `no running or retrying entry for ${identifier}`,
-      );
-    }
-    return sendJson(
-      res,
-      200,
-      {
-        identifier,
-        running: running ?? null,
-        retrying: retrying ?? null,
-        generated_at: snap.generated_at,
-      },
-      method === "HEAD",
-    );
+    return route.handle({ res, deps, method, params });
   }
 
   return sendError(res, 404, "not_found", `no resource at ${path}`);
+}
+
+/** `GET /api/v1/<identifier>`: the running/retrying entry for one issue. */
+function handleIdentifier({ res, deps, method, params }: RouteContext): void {
+  let identifier: string;
+  try {
+    identifier = decodeURIComponent(params[0] as string);
+  } catch {
+    sendError(res, 400, "bad_request", "malformed identifier in path");
+    return;
+  }
+  const snap = deps.snapshot();
+  const running = snap.running.find((r) => r.identifier === identifier);
+  const retrying = snap.retrying.find((r) => r.identifier === identifier);
+  if (!running && !retrying) {
+    sendError(
+      res,
+      404,
+      "not_found",
+      `no running or retrying entry for ${identifier}`,
+    );
+    return;
+  }
+  sendJson(
+    res,
+    200,
+    {
+      identifier,
+      running: running ?? null,
+      retrying: retrying ?? null,
+      generated_at: snap.generated_at,
+    },
+    method === "HEAD",
+  );
 }
 
 function sendJson(
@@ -206,118 +247,4 @@ function sendDashboard(
   } else {
     res.end(html);
   }
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-function renderDashboard(snap: OrchestratorSnapshot): string {
-  const totals = snap.agent_totals;
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta http-equiv="refresh" content="5">
-<title>Baton — orchestrator status</title>
-<style>
-  body { font: 14px/1.5 -apple-system, system-ui, sans-serif; margin: 2rem; color: #222; }
-  h1 { margin: 0 0 0.5rem; font-size: 1.4rem; }
-  h2 { margin: 1.5rem 0 0.5rem; font-size: 1.1rem; }
-  table { border-collapse: collapse; width: 100%; }
-  th, td { border-bottom: 1px solid #eee; padding: 0.4rem 0.6rem; text-align: left; vertical-align: top; }
-  th { background: #f7f7f7; font-weight: 600; }
-  td.num { text-align: right; font-variant-numeric: tabular-nums; }
-  .empty { color: #888; font-style: italic; }
-  .muted { color: #666; }
-  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; }
-</style>
-</head>
-<body>
-<h1>Baton</h1>
-<p class="muted">Generated at <code>${escapeHtml(snap.generated_at)}</code> — auto-refresh every 5s.</p>
-
-<h2>Totals</h2>
-<table>
-  <tr><th>Input tokens</th><td class="num">${totals.input_tokens}</td></tr>
-  <tr><th>Output tokens</th><td class="num">${totals.output_tokens}</td></tr>
-  <tr><th>Total tokens</th><td class="num">${totals.total_tokens}</td></tr>
-  <tr><th>Seconds running</th><td class="num">${totals.seconds_running.toFixed(1)}</td></tr>
-</table>
-
-<h2>Running (${snap.running.length})</h2>
-${renderRunningTable(snap.running)}
-
-<h2>Retrying (${snap.retrying.length})</h2>
-${renderRetryingTable(snap.retrying)}
-</body>
-</html>
-`;
-}
-
-function isSafeHttpUrl(u: string | null): boolean {
-  if (!u) return false;
-  try {
-    const parsed = new URL(u);
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
-function renderRunningTable(rows: SnapshotRunning[]): string {
-  if (rows.length === 0) return `<p class="empty">none</p>`;
-  const body = rows
-    .map((r) => {
-      const link = isSafeHttpUrl(r.issue_url)
-        ? `<a href="${escapeHtml(r.issue_url as string)}">${escapeHtml(r.identifier)}</a>`
-        : escapeHtml(r.identifier);
-      return `<tr>
-        <td>${link}</td>
-        <td>${escapeHtml(r.title)}</td>
-        <td>${escapeHtml(r.state ?? "")}</td>
-        <td class="num">${r.turn_count}</td>
-        <td><code>${escapeHtml(r.session_id ?? "—")}</code></td>
-        <td>${escapeHtml(r.last_event ?? "—")}</td>
-        <td>${escapeHtml(r.started_at)}</td>
-        <td class="num">${r.total_tokens}</td>
-      </tr>`;
-    })
-    .join("\n");
-  return `<table>
-<thead><tr>
-  <th>Issue</th><th>Title</th><th>State</th><th>Turns</th>
-  <th>Session</th><th>Last event</th><th>Started</th><th>Tokens</th>
-</tr></thead>
-<tbody>${body}</tbody></table>`;
-}
-
-function renderRetryingTable(rows: SnapshotRetrying[]): string {
-  if (rows.length === 0) return `<p class="empty">none</p>`;
-  const body = rows
-    .map((r) => {
-      const link = isSafeHttpUrl(r.issue_url)
-        ? `<a href="${escapeHtml(r.issue_url as string)}">${escapeHtml(r.identifier)}</a>`
-        : escapeHtml(r.identifier);
-      return `<tr>
-        <td>${link}</td>
-        <td>${escapeHtml(r.title)}</td>
-        <td class="num">${r.attempt}</td>
-        <td>${escapeHtml(r.scheduled_at)}</td>
-        <td>${escapeHtml(r.fires_at)}</td>
-        <td class="num">${r.delay_ms}</td>
-      </tr>`;
-    })
-    .join("\n");
-  return `<table>
-<thead><tr>
-  <th>Issue</th><th>Title</th><th>Attempt</th>
-  <th>Scheduled</th><th>Fires</th><th>Delay (ms)</th>
-</tr></thead>
-<tbody>${body}</tbody></table>`;
 }
