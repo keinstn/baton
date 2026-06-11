@@ -54,3 +54,18 @@ export async function renderPrompt(
     throw new BatonError("template_render_error", String(err));
   }
 }
+
+/**
+ * Guidance for a continuation turn (SPEC §7.1, §16): later turns resume the same
+ * agent session and receive only a short nudge, never the original rendered
+ * prompt. Plain text — no template engine, so it cannot fail rendering.
+ */
+export function continuationGuidance(issue: Issue, turnNumber: number): string {
+  return [
+    `Continue working on issue ${issue.identifier} (turn ${turnNumber}).`,
+    `Its current tracker state is "${issue.state}".`,
+    "Review the progress already made in this workspace and keep going: make",
+    "further changes, run the tests, and open or update the pull request when",
+    "the work is complete. If the issue is already fully resolved, stop.",
+  ].join("\n");
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isBatonError } from "../src/errors.js";
-import { renderPrompt } from "../src/prompt/builder.js";
+import { continuationGuidance, renderPrompt } from "../src/prompt/builder.js";
 import { makeIssue } from "./helpers.js";
 
 describe("renderPrompt (SPEC §5.4, §12)", () => {
@@ -58,5 +58,15 @@ describe("renderPrompt (SPEC §5.4, §12)", () => {
       null,
     );
     expect(result).toBe("blocked by repo-9");
+  });
+});
+
+describe("continuationGuidance (SPEC §7.1, §16)", () => {
+  it("references the issue and turn number without the task template", () => {
+    const issue = makeIssue({ identifier: "repo-7", state: "In Progress" });
+    const guidance = continuationGuidance(issue, 3);
+    expect(guidance).toContain("Continue working on issue repo-7");
+    expect(guidance).toContain("turn 3");
+    expect(guidance).toContain("In Progress");
   });
 });

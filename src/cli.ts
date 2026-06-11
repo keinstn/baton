@@ -45,11 +45,14 @@ async function main(): Promise<void> {
     runWorker: createWorker({
       workspaces,
       runner,
+      tracker,
+      config: () => config,
       promptTemplate: () => workflow.promptTemplate,
       logger,
     }),
     validate: () => validateDispatchConfig(config),
     config: () => config,
+    cleanupWorkspace: (issue) => workspaces.cleanup(issue),
     logger,
   });
 
@@ -75,6 +78,7 @@ async function main(): Promise<void> {
     logger.info("shutting down", { signal });
     stopped = true;
     if (timer) clearTimeout(timer);
+    orchestrator.cancelRetries();
     process.exit(0);
   };
   process.on("SIGINT", () => shutdown("SIGINT"));
