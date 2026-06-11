@@ -103,7 +103,7 @@ async function main(): Promise<void> {
   const watchBase = path.basename(workflow.path);
   let reloadTimer: NodeJS.Timeout | null = null;
   const watcher = watch(watchDir, (_event, filename) => {
-    if (filename && path.basename(filename.toString()) !== watchBase) return;
+    if (!filename || path.basename(filename.toString()) !== watchBase) return;
     if (reloadTimer) clearTimeout(reloadTimer);
     reloadTimer = setTimeout(() => {
       void reloader.reload();
