@@ -97,6 +97,7 @@ export function createWorker(deps: WorkerDeps): RunWorker {
           throw new BatonError(
             "issue_state_refresh_failed",
             `continuation state refresh failed: ${String(err)}`,
+            { cause: err },
           );
         }
         const latest = refreshed[0];

@@ -85,6 +85,9 @@ export class GitHubProjectsClient implements TrackerClient {
         "tracker token is not configured",
       );
     }
+    const varKeys = Object.keys(variables).join(",");
+    const startMs = Date.now();
+    this.logger?.debug("github api request", { variables: varKeys });
     let res: Response;
     try {
       res = await this.fetchFn(this.cfg.endpoint, {
@@ -97,8 +100,12 @@ export class GitHubProjectsClient implements TrackerClient {
         signal: AbortSignal.timeout(NETWORK_TIMEOUT_MS),
       });
     } catch (err) {
-      throw new BatonError("github_api_request", String(err));
+      throw new BatonError("github_api_request", String(err), { cause: err });
     }
+    this.logger?.debug("github api response", {
+      status: res.status,
+      duration_ms: Date.now() - startMs,
+    });
     if (!res.ok) {
       throw new BatonError(
         "github_api_status",
@@ -112,6 +119,7 @@ export class GitHubProjectsClient implements TrackerClient {
       throw new BatonError(
         "github_unknown_payload",
         `invalid JSON response: ${String(err)}`,
+        { cause: err },
       );
     }
     if (!isRecord(body)) {

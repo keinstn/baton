@@ -3,6 +3,7 @@ import { stat } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { ERROR_MESSAGE_MAX_BYTES, STDERR_TAIL_BYTES } from "../constants.js";
 import { BatonError } from "../errors.js";
+import type { Logger } from "../observability/logger.js";
 import { now } from "../util.js";
 import type { AgentEventCallback, AgentSession, TurnResult } from "./runner.js";
 
@@ -58,6 +59,8 @@ export interface RunSubprocessOptions {
   onEvent: AgentEventCallback;
   /** Parse one stdout line; return a TurnResult once the turn outcome is known. */
   onLine: (line: string) => TurnResult | null;
+  /** Optional logger for subprocess lifecycle events (debug level). */
+  logger?: Logger;
 }
 
 /**
@@ -90,6 +93,12 @@ export function runSubprocess(
           detached: true,
         });
     session.proc = proc;
+
+    opts.logger?.debug("subprocess spawned", {
+      pid: proc.pid,
+      executable: opts.command.split(" ")[0],
+      workspace: session.workspace,
+    });
 
     if (useStdin && proc.stdin) {
       proc.stdin.on("error", () => {
@@ -128,6 +137,10 @@ export function runSubprocess(
       if (resolved) return;
       resolved = true;
       session.proc = null;
+      opts.logger?.debug("subprocess error", {
+        pid: proc.pid,
+        error: String(err),
+      });
       resolvePromise({ ok: false, error: `startup_failed: ${String(err)}` });
     });
     proc.on("close", (code) => {
@@ -135,6 +148,14 @@ export function runSubprocess(
       if (resolved) return;
       resolved = true;
       session.proc = null;
+      opts.logger?.debug("subprocess closed", {
+        pid: proc.pid,
+        exit_code: code,
+        timed_out: timedOut,
+        ...(stderrTail.length > 0
+          ? { stderr_tail: stderrTail.slice(-200) }
+          : {}),
+      });
       if (timedOut) {
         opts.onEvent({
           event: "turn_cancelled",

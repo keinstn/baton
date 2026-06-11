@@ -3,6 +3,7 @@ import {
   DISPLAY_TEXT_MAX_BYTES,
   ERROR_MESSAGE_MAX_BYTES,
 } from "../constants.js";
+import type { Logger } from "../observability/logger.js";
 import { now } from "../util.js";
 import {
   ensureWorkspaceDir,
@@ -29,7 +30,10 @@ export { shellQuote };
  * prior session via `--resume <agent_session_id>` (SPEC §7.1, §10.1).
  */
 export class ClaudeCodeRunner implements AgentRunner {
-  constructor(private cfg: ClaudeCodeConfig) {}
+  constructor(
+    private cfg: ClaudeCodeConfig,
+    private readonly logger?: Logger,
+  ) {}
 
   /** Apply a new config; takes effect on the next turn dispatch (SPEC §6.2). */
   applyConfig(cfg: ClaudeCodeConfig): void {
@@ -94,6 +98,7 @@ export class ClaudeCodeRunner implements AgentRunner {
       stdin: prompt,
       onEvent,
       onLine: (line) => this.handleLine(session, line, onEvent),
+      logger: this.logger,
     });
   }
 

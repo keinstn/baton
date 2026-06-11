@@ -16,12 +16,31 @@ export class BatonError extends Error {
   constructor(
     public readonly code: string,
     message?: string,
+    options?: { cause?: unknown },
   ) {
-    super(message ?? code);
+    super(message ?? code, options);
     this.name = "BatonError";
   }
 }
 
 export function isBatonError(err: unknown, code?: string): err is BatonError {
   return err instanceof BatonError && (code === undefined || err.code === code);
+}
+
+/**
+ * Extract the root cause string for structured logging.
+ * Walks the `.cause` chain to the deepest error so log entries surface
+ * the actual failure (e.g. `connect ENOTFOUND`) rather than just the
+ * wrapper (`TypeError: fetch failed`).
+ *
+ * Returns `undefined` when the error has no cause, so callers can spread
+ * it conditionally: `{ error: String(err), ...errorCause(err) }`.
+ */
+export function errorCause(err: unknown): { cause: string } | undefined {
+  if (!(err instanceof Error) || err.cause == null) return undefined;
+  let root: unknown = err.cause;
+  while (root instanceof Error && root.cause != null) {
+    root = root.cause;
+  }
+  return { cause: String(root) };
 }
