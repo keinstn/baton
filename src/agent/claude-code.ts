@@ -24,9 +24,9 @@ function now(): string {
 /**
  * Claude Code adapter, CLI subprocess mode (SPEC §10.1).
  *
- * Phase 1 scope: one turn per session via `claude -p` with stream-json output.
- * The prompt is delivered on stdin to avoid argv length limits. Session resume
- * for continuation turns is a Phase 2 item.
+ * One turn per `claude -p` invocation with stream-json output. The prompt is
+ * delivered on stdin to avoid argv length limits. Continuation turns resume the
+ * prior session via `--resume <agent_session_id>` (SPEC §7.1, §10.1).
  */
 export class ClaudeCodeRunner implements AgentRunner {
   constructor(
@@ -34,8 +34,9 @@ export class ClaudeCodeRunner implements AgentRunner {
     private readonly logger: Logger,
   ) {}
 
-  /** Build the full shell command line. `cfg.command` is itself a shell string (SPEC §5.3.6). */
-  buildCommand(): string {
+  /** Build the full shell command line. `cfg.command` is itself a shell string (SPEC §5.3.6).
+   *  A non-null `resumeId` adds `--resume` so continuation turns reuse the session. */
+  buildCommand(resumeId?: string | null): string {
     const parts: string[] = [
       this.cfg.command,
       "-p",
@@ -45,6 +46,9 @@ export class ClaudeCodeRunner implements AgentRunner {
       "--permission-mode",
       shellQuote(this.cfg.permissionMode),
     ];
+    if (resumeId) {
+      parts.push("--resume", shellQuote(resumeId));
+    }
     if (this.cfg.model) {
       parts.push("--model", shellQuote(this.cfg.model));
     }
@@ -81,7 +85,7 @@ export class ClaudeCodeRunner implements AgentRunner {
         `not a directory: ${workspace}`,
       );
     }
-    return { workspace, agentSessionId: null, proc: null };
+    return { workspace, agentSessionId: null, proc: null, turnNumber: 0 };
   }
 
   runTurn(
@@ -89,10 +93,14 @@ export class ClaudeCodeRunner implements AgentRunner {
     prompt: string,
     onEvent: AgentEventCallback,
   ): Promise<TurnResult> {
+    // Continuation turns (those after the first) resume the established session
+    // so the agent keeps its context (SPEC §7.1, §10.1).
+    session.turnNumber += 1;
+    const resumeId = session.turnNumber > 1 ? session.agentSessionId : null;
     return new Promise((resolvePromise) => {
       // detached: own process group, so timeout/stop kills the whole agent
       // process tree (not just the bash -lc wrapper).
-      const proc = spawn("bash", ["-lc", this.buildCommand()], {
+      const proc = spawn("bash", ["-lc", this.buildCommand(resumeId)], {
         cwd: session.workspace,
         stdio: ["pipe", "pipe", "pipe"],
         detached: true,
@@ -174,11 +182,18 @@ export class ClaudeCodeRunner implements AgentRunner {
           typeof msg["session_id"] === "string"
         ) {
           session.agentSessionId = msg["session_id"];
-          onEvent({
-            event: "session_started",
-            timestamp: now(),
-            payload: { session_id: msg["session_id"] },
-          });
+          // session_started is emitted once, on the first turn, carrying the
+          // composite id `<agent_session_id>-1`; continuation turns increment
+          // turn_number instead of re-emitting (SPEC §10.1, §17.5).
+          if (session.turnNumber <= 1) {
+            onEvent({
+              event: "session_started",
+              timestamp: now(),
+              payload: {
+                session_id: `${msg["session_id"]}-${session.turnNumber}`,
+              },
+            });
+          }
         } else {
           onEvent({ event: "other_message", timestamp: now() });
         }

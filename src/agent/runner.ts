@@ -26,6 +26,10 @@ export interface AgentSession {
   workspace: string;
   agentSessionId: string | null;
   proc: ChildProcess | null;
+  /** Count of turns already run on this session; the adapter increments it
+   *  before each turn so continuation turns resume and skip session_started
+   *  (SPEC §10.1). */
+  turnNumber: number;
 }
 
 export interface TurnResult {

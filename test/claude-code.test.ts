@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -51,6 +51,13 @@ describe("buildCommand (SPEC §10.1)", () => {
     expect(cmd).toContain("--allowedTools 'Bash(gh:*),Edit'");
     expect(cmd).toContain("--disallowedTools 'WebSearch'");
     expect(cmd).toContain("--model 'claude-opus-4-8'");
+  });
+
+  it("adds --resume only when a session id is supplied (SPEC §10.1)", () => {
+    const r = runner("claude");
+    expect(r.buildCommand("sess-9")).toContain("--resume 'sess-9'");
+    expect(r.buildCommand(null)).not.toContain("--resume");
+    expect(r.buildCommand()).not.toContain("--resume");
   });
 });
 
@@ -118,5 +125,37 @@ describe("runTurn stream-json parsing (SPEC §10.1)", () => {
     expect(result.ok).toBe(false);
     expect(result.error).toBe("turn_timeout");
     expect(Date.now() - start).toBeLessThan(5000);
+  });
+
+  it("resumes the session on continuation turns and emits session_started once (SPEC §10.1, §17.5)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "baton-cc-"));
+    const argsLog = join(dir, "args.log");
+    const command = join(dir, "fake-claude");
+    await writeFile(
+      command,
+      `#!/usr/bin/env bash\ncat >/dev/null\necho "$@" >> ${argsLog}\n` +
+        `echo '{"type":"system","subtype":"init","session_id":"sess-xyz"}'\n` +
+        `echo '{"type":"result","subtype":"success","is_error":false,"result":"ok"}'\n`,
+    );
+    await chmod(command, 0o755);
+    const workspace = join(dir, "ws");
+    await mkdir(workspace);
+
+    const r = runner(command);
+    const session = await r.startSession(workspace);
+    const first: AgentEvent[] = [];
+    await r.runTurn(session, "first turn", (e) => first.push(e));
+    const second: AgentEvent[] = [];
+    await r.runTurn(session, "second turn", (e) => second.push(e));
+
+    const lines = (await readFile(argsLog, "utf8")).trim().split("\n");
+    expect(lines[0]).not.toContain("--resume");
+    expect(lines[1]).toContain("--resume sess-xyz");
+
+    // session_started fires only on the first turn, with the `-1` suffix.
+    const started = first.find((e) => e.event === "session_started");
+    expect(started?.payload?.["session_id"]).toBe("sess-xyz-1");
+    expect(second.find((e) => e.event === "session_started")).toBeUndefined();
+    expect(session.turnNumber).toBe(2);
   });
 });
