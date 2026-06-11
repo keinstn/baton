@@ -31,6 +31,73 @@ follows the Symphony spec unchanged.
 - [`docs/DESIGN.md`](docs/DESIGN.md) — implementation design: architecture, adapter mappings,
   module layout, and the phased implementation plan (TypeScript / Node.js)
 
+## Installation
+
+**Prerequisites**
+
+- [Node.js](https://nodejs.org/) ≥ 20
+- [`gh` CLI](https://cli.github.com/) — used by the agent inside each workspace
+- The coding agent binary matching your `agent.kind`:
+  - `claude_code` → [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)
+  - `copilot` → [GitHub Copilot CLI](https://githubnext.com/projects/copilot-cli)
+
+**Build from source**
+
+```sh
+git clone https://github.com/keinstn/baton.git
+cd baton/copilot
+npm install
+npm run build
+```
+
+To use `baton` as a global command, link it after building:
+
+```sh
+npm link
+```
+
+## Usage
+
+**1. Create a `WORKFLOW.md`**
+
+The `WORKFLOW.md` file is the single configuration + prompt contract for your project. Copy one of the examples as a starting point:
+
+- [`examples/WORKFLOW.md`](examples/WORKFLOW.md) — Claude Code agent
+- [`examples/WORKFLOW.copilot.md`](examples/WORKFLOW.copilot.md) — GitHub Copilot agent
+
+Edit the YAML front matter to point at your GitHub Project:
+
+```yaml
+tracker:
+  owner: my-org          # GitHub org or user
+  project_number: 5      # Project board number
+  token: $GITHUB_TOKEN   # Fine-grained PAT or GitHub App token
+  active_states: [Todo, In Progress]
+  required_labels: [ai-ready]
+agent:
+  kind: claude_code      # or: copilot
+```
+
+**2. Set environment variables**
+
+```sh
+export GITHUB_TOKEN=ghp_...   # GitHub PAT with Projects read scope
+```
+
+**3. Run Baton**
+
+```sh
+baton WORKFLOW.md
+```
+
+`WORKFLOW.md` defaults to `./WORKFLOW.md` when omitted.
+
+| Flag | Description |
+|---|---|
+| `--port N` / `-p N` | Enable the HTTP dashboard on port N (overrides `server.port` in front matter) |
+
+Baton polls the board on every `polling.interval_ms` tick, dispatches eligible issues to agent workers, and logs structured JSON to stdout. Send `SIGINT` or `SIGTERM` to shut down gracefully.
+
 ## How it works (one paragraph)
 
 Every `polling.interval_ms`, Baton queries the configured Project board for issues whose Status is
