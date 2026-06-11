@@ -1,4 +1,4 @@
-import { buildConfig, type BatonConfig } from "../src/config/schema.js";
+import { type BatonConfig, buildConfig } from "../src/config/schema.js";
 import { Logger } from "../src/observability/logger.js";
 import type { Issue } from "../src/tracker/types.js";
 

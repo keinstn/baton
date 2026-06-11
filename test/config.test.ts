@@ -51,7 +51,9 @@ describe("$VAR resolution (SPEC §6.1)", () => {
   });
 
   it("resolves explicit $VAR tracker.token", () => {
-    const config = makeConfig({ tracker: { token: "$MY_PAT" } }, "/tmp", { MY_PAT: "pat" });
+    const config = makeConfig({ tracker: { token: "$MY_PAT" } }, "/tmp", {
+      MY_PAT: "pat",
+    });
     expect(config.tracker.token).toBe("pat");
   });
 });
@@ -76,9 +78,9 @@ describe("invalid numeric config fails validation (SPEC §5.3.4/§5.3.5)", () =>
   });
 
   it("rejects invalid agent.max_turns", () => {
-    expect(() => buildConfig({ agent: { max_turns: -1 } }, "/tmp", {})).toThrowError(
-      /agent.max_turns/,
-    );
+    expect(() =>
+      buildConfig({ agent: { max_turns: -1 } }, "/tmp", {}),
+    ).toThrowError(/agent.max_turns/);
   });
 });
 
@@ -93,13 +95,18 @@ describe("per-state concurrency map (SPEC §5.3.5)", () => {
         },
       },
     });
-    expect(config.agent.maxConcurrentAgentsByState).toEqual({ "in progress": 2 });
+    expect(config.agent.maxConcurrentAgentsByState).toEqual({
+      "in progress": 2,
+    });
   });
 });
 
 describe("validateDispatchConfig (SPEC §6.3)", () => {
   it("passes a complete config", () => {
-    expect(validateDispatchConfig(makeConfig())).toEqual({ ok: true, errors: [] });
+    expect(validateDispatchConfig(makeConfig())).toEqual({
+      ok: true,
+      errors: [],
+    });
   });
 
   it("reports each missing requirement", () => {
@@ -114,7 +121,10 @@ describe("validateDispatchConfig (SPEC §6.3)", () => {
   });
 
   it("rejects unsupported kinds", () => {
-    const config = makeConfig({ tracker: { kind: "linear" }, agent: { kind: "codex" } });
+    const config = makeConfig({
+      tracker: { kind: "linear" },
+      agent: { kind: "codex" },
+    });
     const codes = validateDispatchConfig(config).errors.map((e) => e.code);
     expect(codes).toContain("unsupported_tracker_kind");
     expect(codes).toContain("unsupported_agent_kind");

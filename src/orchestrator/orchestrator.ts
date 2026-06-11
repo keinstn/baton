@@ -1,8 +1,8 @@
-import { norm } from "../util.js";
+import type { AgentEvent } from "../agent/runner.js";
 import type { BatonConfig, ValidationResult } from "../config/schema.js";
 import type { Logger } from "../observability/logger.js";
-import type { AgentEvent } from "../agent/runner.js";
 import type { Issue } from "../tracker/types.js";
+import { norm } from "../util.js";
 
 export interface RunningEntry {
   issue: Issue;
@@ -49,7 +49,11 @@ export function sortForDispatch(issues: Issue[]): Issue[] {
     const ca = a.createdAt ?? "9999-12-31T00:00:00Z";
     const cb = b.createdAt ?? "9999-12-31T00:00:00Z";
     if (ca !== cb) return ca < cb ? -1 : 1;
-    return a.identifier < b.identifier ? -1 : a.identifier > b.identifier ? 1 : 0;
+    return a.identifier < b.identifier
+      ? -1
+      : a.identifier > b.identifier
+        ? 1
+        : 0;
   });
 }
 
@@ -59,7 +63,8 @@ export function isDispatchEligible(
   config: BatonConfig,
   state: { running: ReadonlySet<string>; claimed: ReadonlySet<string> },
 ): boolean {
-  if (!issue.id || !issue.identifier || !issue.title || !issue.state) return false;
+  if (!issue.id || !issue.identifier || !issue.title || !issue.state)
+    return false;
   if (issue.closed) return false;
 
   const tracker = config.tracker;
@@ -79,7 +84,8 @@ export function isDispatchEligible(
 
   // Blocker rule applies to the first active state ("Todo" by default).
   const firstActive = norm(tracker.activeStates[0] ?? "todo");
-  if (s === firstActive && issue.blockedBy.some((b) => !b.terminal)) return false;
+  if (s === firstActive && issue.blockedBy.some((b) => !b.terminal))
+    return false;
 
   return true;
 }
@@ -194,7 +200,9 @@ export class Orchestrator {
 
     Promise.resolve()
       .then(() =>
-        this.deps.runWorker(issue, attempt, (event) => this.onAgentUpdate(issue.id, event)),
+        this.deps.runWorker(issue, attempt, (event) =>
+          this.onAgentUpdate(issue.id, event),
+        ),
       )
       .then(
         () => this.onWorkerExit(issue.id, true),
@@ -217,7 +225,8 @@ export class Orchestrator {
       entry.totalTokens += event.usage.inputTokens + event.usage.outputTokens;
       this.totals.inputTokens += event.usage.inputTokens;
       this.totals.outputTokens += event.usage.outputTokens;
-      this.totals.totalTokens += event.usage.inputTokens + event.usage.outputTokens;
+      this.totals.totalTokens +=
+        event.usage.inputTokens + event.usage.outputTokens;
     }
   }
 

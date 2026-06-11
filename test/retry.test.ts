@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { CONTINUATION_DELAY_MS, failureBackoffMs } from "../src/orchestrator/retry.js";
+import {
+  CONTINUATION_DELAY_MS,
+  failureBackoffMs,
+} from "../src/orchestrator/retry.js";
 
 describe("retry backoff (SPEC §8.4)", () => {
   it("uses a 1 second continuation delay", () => {

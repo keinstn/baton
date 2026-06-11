@@ -38,7 +38,7 @@ export async function renderPrompt(
   issue: Issue,
   attempt: number | null,
 ): Promise<string> {
-  let parsed;
+  let parsed: ReturnType<typeof engine.parse>;
   try {
     parsed = engine.parse(template);
   } catch (err) {

@@ -1,7 +1,7 @@
+import type { AgentEventCallback, AgentRunner } from "../agent/runner.js";
 import { BatonError } from "../errors.js";
-import { renderPrompt } from "../prompt/builder.js";
-import type { AgentRunner, AgentEventCallback } from "../agent/runner.js";
 import type { Logger } from "../observability/logger.js";
+import { renderPrompt } from "../prompt/builder.js";
 import type { Issue } from "../tracker/types.js";
 import type { WorkspaceManager } from "../workspace/manager.js";
 import type { RunWorker } from "./orchestrator.js";
@@ -49,9 +49,14 @@ export function createWorker(deps: WorkerDeps): RunWorker {
     try {
       const result = await deps.runner.runTurn(session, prompt, onEvent);
       if (!result.ok) {
-        throw new BatonError("turn_failed", result.error ?? "agent turn failed");
+        throw new BatonError(
+          "turn_failed",
+          result.error ?? "agent turn failed",
+        );
       }
-      log.info("agent turn completed", { session_id: session.agentSessionId ?? "" });
+      log.info("agent turn completed", {
+        session_id: session.agentSessionId ?? "",
+      });
     } finally {
       await deps.runner.stopSession(session);
       await deps.workspaces.runAfterRun(issue, workspace.path);

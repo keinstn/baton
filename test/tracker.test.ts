@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { GitHubProjectsClient } from "../src/tracker/github-projects.js";
 import type { TrackerConfig } from "../src/config/schema.js";
+import { GitHubProjectsClient } from "../src/tracker/github-projects.js";
 import { makeConfig } from "./helpers.js";
 
 function trackerConfig(overrides: Partial<TrackerConfig> = {}): TrackerConfig {
@@ -8,7 +8,11 @@ function trackerConfig(overrides: Partial<TrackerConfig> = {}): TrackerConfig {
 }
 
 function gqlResponse(data: unknown): Response {
-  return { ok: true, status: 200, json: async () => ({ data }) } as unknown as Response;
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({ data }),
+  } as unknown as Response;
 }
 
 const PROJECT_DATA = {
@@ -26,7 +30,10 @@ const PROJECT_DATA = {
               { name: "Done" },
             ],
           },
-          { name: "Priority", options: [{ name: "P0" }, { name: "P1" }, { name: "P2" }] },
+          {
+            name: "Priority",
+            options: [{ name: "P0" }, { name: "P1" }, { name: "P2" }],
+          },
           {},
         ],
       },
@@ -51,8 +58,12 @@ function item(num: number, status: string | null, opts: ItemOpts = {}) {
     id: `PVTI_${num}`,
     fieldValues: {
       nodes: [
-        ...(status !== null ? [{ name: status, field: { name: "Status" } }] : []),
-        ...(opts.priority ? [{ name: opts.priority, field: { name: "Priority" } }] : []),
+        ...(status !== null
+          ? [{ name: status, field: { name: "Status" } }]
+          : []),
+        ...(opts.priority
+          ? [{ name: opts.priority, field: { name: "Priority" } }]
+          : []),
         {},
       ],
     },
@@ -72,7 +83,11 @@ function item(num: number, status: string | null, opts: ItemOpts = {}) {
   };
 }
 
-function itemsPage(nodes: unknown[], endCursor: string | null, hasNextPage: boolean) {
+function itemsPage(
+  nodes: unknown[],
+  endCursor: string | null,
+  hasNextPage: boolean,
+) {
   return { node: { items: { pageInfo: { hasNextPage, endCursor }, nodes } } };
 }
 
@@ -119,7 +134,9 @@ describe("project resolution (SPEC §11.2)", () => {
   });
 
   it("fails with missing_tracker_project when the project is absent", async () => {
-    const { client: c } = client([gqlResponse({ organization: { projectV2: null } })]);
+    const { client: c } = client([
+      gqlResponse({ organization: { projectV2: null } }),
+    ]);
     await expect(c.fetchCandidateIssues()).rejects.toMatchObject({
       code: "missing_tracker_project",
     });
@@ -152,7 +169,11 @@ describe("candidate fetch and normalization (SPEC §11.2-11.3)", () => {
       gqlResponse(itemsPage([item(3, "In Progress")], null, false)),
     ]);
     const issues = await c.fetchCandidateIssues();
-    expect(issues.map((i) => i.identifier)).toEqual(["repo-1", "repo-2", "repo-3"]);
+    expect(issues.map((i) => i.identifier)).toEqual([
+      "repo-1",
+      "repo-2",
+      "repo-3",
+    ]);
   });
 
   it("filters by status, drops non-issues, and applies the repos filter", async () => {
@@ -183,10 +204,16 @@ describe("candidate fetch and normalization (SPEC §11.2-11.3)", () => {
   it("normalizes labels to lowercase, derives priority position, and flags closed issues", async () => {
     const { client: c } = client(
       [
-      gqlResponse(PROJECT_DATA),
+        gqlResponse(PROJECT_DATA),
         gqlResponse(
           itemsPage(
-            [item(1, "Todo", { labels: [" Bug ", "AI-Ready"], priority: "P1", closed: true })],
+            [
+              item(1, "Todo", {
+                labels: [" Bug ", "AI-Ready"],
+                priority: "P1",
+                closed: true,
+              }),
+            ],
             null,
             false,
           ),
@@ -223,9 +250,15 @@ describe("candidate fetch and normalization (SPEC §11.2-11.3)", () => {
 
 describe("error mapping (SPEC §11.4)", () => {
   it("maps non-200 responses to github_api_status", async () => {
-    const res = { ok: false, status: 502, json: async () => ({}) } as unknown as Response;
+    const res = {
+      ok: false,
+      status: 502,
+      json: async () => ({}),
+    } as unknown as Response;
     const { client: c } = client([res]);
-    await expect(c.fetchCandidateIssues()).rejects.toMatchObject({ code: "github_api_status" });
+    await expect(c.fetchCandidateIssues()).rejects.toMatchObject({
+      code: "github_api_status",
+    });
   });
 
   it("maps GraphQL errors to github_graphql_errors", async () => {
@@ -242,8 +275,13 @@ describe("error mapping (SPEC §11.4)", () => {
 
   it("maps transport failures to github_api_request", async () => {
     const fetchMock = vi.fn().mockRejectedValueOnce(new Error("ECONNRESET"));
-    const c = new GitHubProjectsClient(trackerConfig(), fetchMock as unknown as typeof fetch);
-    await expect(c.fetchCandidateIssues()).rejects.toMatchObject({ code: "github_api_request" });
+    const c = new GitHubProjectsClient(
+      trackerConfig(),
+      fetchMock as unknown as typeof fetch,
+    );
+    await expect(c.fetchCandidateIssues()).rejects.toMatchObject({
+      code: "github_api_request",
+    });
   });
 });
 
@@ -268,12 +306,16 @@ describe("issue state refresh (SPEC §11.1 op 3)", () => {
               {
                 id: "PVTI_other",
                 project: { id: "PVT_other" },
-                fieldValues: { nodes: [{ name: "Done", field: { name: "Status" } }] },
+                fieldValues: {
+                  nodes: [{ name: "Done", field: { name: "Status" } }],
+                },
               },
               {
                 id: "PVTI_1",
                 project: { id: "PVT_1" },
-                fieldValues: { nodes: [{ name: "In Progress", field: { name: "Status" } }] },
+                fieldValues: {
+                  nodes: [{ name: "In Progress", field: { name: "Status" } }],
+                },
               },
             ],
           },
@@ -281,7 +323,10 @@ describe("issue state refresh (SPEC §11.1 op 3)", () => {
         null,
       ],
     };
-    const { client: c, fetchMock } = client([gqlResponse(PROJECT_DATA), gqlResponse(nodesData)]);
+    const { client: c, fetchMock } = client([
+      gqlResponse(PROJECT_DATA),
+      gqlResponse(nodesData),
+    ]);
     const issues = await c.fetchIssueStatesByIds(["I_1"]);
     expect(issues).toHaveLength(1);
     expect(issues[0]!.state).toBe("In Progress");

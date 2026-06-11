@@ -1,7 +1,7 @@
 import { mkdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
-import { BatonError } from "../errors.js";
 import type { BatonConfig } from "../config/schema.js";
+import { BatonError } from "../errors.js";
 import type { Logger } from "../observability/logger.js";
 import type { Issue } from "../tracker/types.js";
 import { runHookScript } from "./hooks.js";
