@@ -13,6 +13,8 @@ export interface RunningEntry {
   identifier: string;
   startedAtMs: number;
   sessionId: string | null;
+  /** Count of completed turns within the current session (SPEC §13). */
+  turnCount: number;
   lastEvent: string | null;
   lastEventAtMs: number | null;
   inputTokens: number;
@@ -32,6 +34,53 @@ export interface AgentTotals {
   outputTokens: number;
   totalTokens: number;
   secondsRunning: number;
+}
+
+/** JSON-serializable running entry (SPEC §13.5/§13.7). Snake_case for HTTP API. */
+export interface SnapshotRunning {
+  identifier: string;
+  issue_id: string;
+  issue_url: string | null;
+  title: string;
+  state: string | null;
+  turn_count: number;
+  session_id: string | null;
+  started_at: string;
+  last_event: string | null;
+  last_event_at: string | null;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  retry_attempt: number | null;
+  failure_attempt: number;
+}
+
+/** JSON-serializable retrying entry. */
+export interface SnapshotRetrying {
+  identifier: string;
+  issue_id: string;
+  issue_url: string | null;
+  title: string;
+  attempt: number;
+  prompt_attempt: number | null;
+  scheduled_at: string;
+  fires_at: string;
+  delay_ms: number;
+}
+
+/** Top-level snapshot returned by the HTTP /api/v1/state endpoint (SPEC §13.7). */
+export interface OrchestratorSnapshot {
+  generated_at: string;
+  running: SnapshotRunning[];
+  retrying: SnapshotRetrying[];
+  agent_totals: {
+    input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+    seconds_running: number;
+  };
+  /** SPEC §13.5: null when the agent protocol does not expose rate-limit data. */
+  rate_limits: null;
 }
 
 export type RunWorker = (
@@ -60,6 +109,10 @@ interface RetryState {
   promptAttempt: number | null;
   failureAttempt: number;
   task: ScheduledTask;
+  /** Wall-clock ms when the retry was armed (for snapshot reporting). */
+  scheduledAtMs: number;
+  /** Delay armed for; scheduled_at + delayMs is the planned fire time. */
+  delayMs: number;
 }
 
 export interface OrchestratorDeps {
@@ -332,6 +385,7 @@ export class Orchestrator {
       identifier: issue.identifier,
       startedAtMs: this.now(),
       sessionId: null,
+      turnCount: 0,
       lastEvent: null,
       lastEventAtMs: null,
       inputTokens: 0,
@@ -367,6 +421,9 @@ export class Orchestrator {
     if (event.event === "session_started") {
       const sessionId = event.payload?.session_id;
       if (typeof sessionId === "string") entry.sessionId = sessionId;
+    }
+    if (event.event === "turn_completed") {
+      entry.turnCount += 1;
     }
     if (event.usage) {
       entry.inputTokens += event.usage.inputTokens;
@@ -455,7 +512,14 @@ export class Orchestrator {
     this.retries.get(issue.id)?.task.cancel();
     this.claimed.add(issue.id); // stay claimed so the tick won't double-dispatch
     const task = this.scheduler(() => this.onRetryTimer(issue.id), delayMs);
-    this.retries.set(issue.id, { issue, promptAttempt, failureAttempt, task });
+    this.retries.set(issue.id, {
+      issue,
+      promptAttempt,
+      failureAttempt,
+      task,
+      scheduledAtMs: this.now(),
+      delayMs,
+    });
     this.deps.logger.info("retry scheduled", {
       issue_id: issue.id,
       issue_identifier: issue.identifier,
@@ -525,6 +589,79 @@ export class Orchestrator {
       retry.failureAttempt,
       delayMs,
     );
+  }
+
+  /**
+   * Build a JSON-serializable snapshot of orchestrator state for the OPTIONAL
+   * HTTP server extension (SPEC §13.7). Read-only: copies maps to plain objects
+   * so callers cannot mutate live state and so concurrent ticks don't expose
+   * partial updates. Includes `running` (with live elapsed seconds folded into
+   * `agent_totals.seconds_running`), `retrying`, and aggregate token/duration
+   * totals (SPEC §13.5).
+   */
+  snapshot(): OrchestratorSnapshot {
+    const nowMs = this.now();
+    const liveElapsedSec = (() => {
+      let s = 0;
+      for (const entry of this.running.values()) {
+        s += (nowMs - entry.startedAtMs) / 1000;
+      }
+      return s;
+    })();
+
+    const running: SnapshotRunning[] = [];
+    for (const entry of this.running.values()) {
+      running.push({
+        identifier: entry.identifier,
+        issue_id: entry.issue.id,
+        issue_url: entry.issue.url,
+        title: entry.issue.title,
+        state: entry.issue.state,
+        turn_count: entry.turnCount,
+        session_id: entry.sessionId,
+        started_at: new Date(entry.startedAtMs).toISOString(),
+        last_event: entry.lastEvent,
+        last_event_at:
+          entry.lastEventAtMs === null
+            ? null
+            : new Date(entry.lastEventAtMs).toISOString(),
+        input_tokens: entry.inputTokens,
+        output_tokens: entry.outputTokens,
+        total_tokens: entry.totalTokens,
+        retry_attempt: entry.retryAttempt,
+        failure_attempt: entry.failureAttempt,
+      });
+    }
+
+    const retrying: SnapshotRetrying[] = [];
+    for (const retry of this.retries.values()) {
+      retrying.push({
+        identifier: retry.issue.identifier,
+        issue_id: retry.issue.id,
+        issue_url: retry.issue.url,
+        title: retry.issue.title,
+        attempt: retry.failureAttempt,
+        prompt_attempt: retry.promptAttempt,
+        scheduled_at: new Date(retry.scheduledAtMs).toISOString(),
+        fires_at: new Date(retry.scheduledAtMs + retry.delayMs).toISOString(),
+        delay_ms: retry.delayMs,
+      });
+    }
+
+    return {
+      generated_at: new Date(nowMs).toISOString(),
+      running,
+      retrying,
+      agent_totals: {
+        input_tokens: this.totals.inputTokens,
+        output_tokens: this.totals.outputTokens,
+        total_tokens: this.totals.totalTokens,
+        seconds_running: this.totals.secondsRunning + liveElapsedSec,
+      },
+      // SPEC §13.5: present but null when the agent protocol does not expose
+      // rate-limit counters (Claude Code SDK and Copilot CLI do not surface them).
+      rate_limits: null,
+    };
   }
 
   /** Cancel all pending retry timers (e.g. on shutdown). */

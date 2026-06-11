@@ -227,7 +227,8 @@ async function runAttempt(issue: Issue, workspace: string, prompt: string, onEve
 
 - Copilot アダプタ ✅ (`src/agent/copilot.ts`、`-p` argv + `--output-format json` JSONL、`--session-id`/`--resume` で継続ターン、resume 失敗時は同ターン内で fresh-session フォールバック、token usage は SPEC §10.2 通り 0 報告)
 - state 別並列度 ✅ (Phase 2 で実装済み: `agent.max_concurrent_agents_by_state`)
-- HTTP ダッシュボード(`/api/v1/state` 等)+ webhook refresh トリガー
+- HTTP ダッシュボード ✅ (`src/observability/http.ts`、`node:http` ベース、`/api/v1/state`・`/api/v1/<identifier>`・`POST /api/v1/refresh`(202+コアレッシング)・`GET /` HTML ダッシュボード(meta refresh 5s)、ループバック既定、`server.port` 未設定なら起動しない、CLI `--port` が前面)
+- webhook refresh トリガー(将来拡張、SPEC §13.7 OPTIONAL)
 - Real Integration Profile(§17.8)のスモークテスト
 
 ## 8. セキュリティ方針(要約)
