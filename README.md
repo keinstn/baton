@@ -109,6 +109,34 @@ commenting progress, opening a PR, and moving the Status to the handoff state (e
 Baton stops sessions whose issues leave the active states and cleans up workspaces for terminal
 issues.
 
+## Architecture
+
+```mermaid
+flowchart TD
+    Board["📋 GitHub Projects Board\n(Status: Todo / In Progress)"]
+
+    subgraph Baton["Baton (long-running service)"]
+        Orchestrator["Orchestrator\npoll · claim · retry · reconcile"]
+        TrackerAdapter["Tracker Adapter\nGitHub Projects v2 GraphQL"]
+        Worker["Worker\n(per issue)"]
+        WorkspaceManager["Workspace Manager\nclone · after_create · before_run"]
+        AgentRunner["Agent Runner"]
+        ClaudeCode["Claude Code\n(Agent SDK)"]
+        CopilotCLI["Copilot CLI"]
+    end
+
+    Board -->|"poll every interval_ms"| TrackerAdapter
+    TrackerAdapter -->|"eligible issues"| Orchestrator
+    Orchestrator -->|"dispatch"| Worker
+    Worker --> WorkspaceManager
+    WorkspaceManager -->|"workspace ready"| Worker
+    Worker --> AgentRunner
+    AgentRunner --> ClaudeCode
+    AgentRunner --> CopilotCLI
+    ClaudeCode -->|"gh CLI: comment · PR · status update"| Board
+    CopilotCLI -->|"gh CLI: comment · PR · status update"| Board
+```
+
 ## License
 
 Apache License 2.0 (same as Symphony).
