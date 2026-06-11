@@ -140,3 +140,65 @@ describe("workspace cleanup (SPEC §9.4)", () => {
     await expect(m.cleanup(makeIssue())).resolves.toBeUndefined();
   });
 });
+
+describe("applyConfig (SPEC §6.2 hot-reload)", () => {
+  it("updates hook config used on the next createForIssue call", async () => {
+    const root = await tempRoot();
+    const m = manager(root);
+
+    // Apply a config with an after_create hook that writes a marker file.
+    const markerPath = join(root, "hook-ran");
+    const updatedConfig = makeConfig({
+      workspace: { root },
+      hooks: { after_create: `touch '${markerPath}'` },
+    });
+    m.applyConfig(updatedConfig);
+
+    const issue = makeIssue({ identifier: "new-issue" });
+    await m.createForIssue(issue);
+    expect(await exists(markerPath)).toBe(true);
+  });
+
+  it("updates root and logs a warning when workspace.root changes", async () => {
+    const oldRoot = await tempRoot();
+    const newRoot = await tempRoot();
+
+    const warnMessages: string[] = [];
+    const { Logger } = await import("../src/observability/logger.js");
+    const warnLogger = new Logger({}, (line) => {
+      const entry = JSON.parse(line) as Record<string, unknown>;
+      if (entry["level"] === "warn") warnMessages.push(String(entry["msg"]));
+    });
+
+    const config = makeConfig({ workspace: { root: oldRoot } });
+    const m = new WorkspaceManager(config, warnLogger);
+
+    const updatedConfig = makeConfig({ workspace: { root: newRoot } });
+    m.applyConfig(updatedConfig);
+
+    // New workspace should be created under newRoot.
+    const issue = makeIssue({ identifier: "issue-after-root-change" });
+    const ws = await m.createForIssue(issue);
+    expect(ws.path.startsWith(newRoot)).toBe(true);
+
+    // A warning should have been emitted about the root change.
+    expect(warnMessages.some((msg) => msg.includes("workspace.root changed"))).toBe(true);
+  });
+
+  it("does not log a warning when workspace.root is unchanged", async () => {
+    const root = await tempRoot();
+
+    const warnMessages: string[] = [];
+    const { Logger } = await import("../src/observability/logger.js");
+    const warnLogger = new Logger({}, (line) => {
+      const entry = JSON.parse(line) as Record<string, unknown>;
+      if (entry["level"] === "warn") warnMessages.push(String(entry["msg"]));
+    });
+
+    const config = makeConfig({ workspace: { root } });
+    const m = new WorkspaceManager(config, warnLogger);
+    m.applyConfig(config); // same config, same root
+
+    expect(warnMessages).toHaveLength(0);
+  });
+});

@@ -61,6 +61,22 @@ describe("buildCommand (SPEC §10.1)", () => {
   });
 });
 
+describe("applyConfig (SPEC §6.2 hot-reload)", () => {
+  it("updates buildCommand output on the next call", () => {
+    const r = runner("claude", { permission_mode: "acceptEdits" });
+    expect(r.buildCommand()).toContain("--permission-mode 'acceptEdits'");
+
+    const updatedConfig = makeConfig({
+      claude_code: { command: "claude", permission_mode: "bypassPermissions", model: "claude-haiku-4-5" },
+    });
+    r.applyConfig(updatedConfig.claudeCode);
+
+    const cmd = r.buildCommand();
+    expect(cmd).toContain("--permission-mode 'bypassPermissions'");
+    expect(cmd).toContain("--model 'claude-haiku-4-5'");
+  });
+});
+
 describe("startSession (SPEC §9.5 Invariant 1)", () => {
   it("rejects a non-directory workspace cwd", async () => {
     const r = runner("claude");

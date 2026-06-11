@@ -30,9 +30,14 @@ function now(): string {
  */
 export class ClaudeCodeRunner implements AgentRunner {
   constructor(
-    private readonly cfg: ClaudeCodeConfig,
+    private cfg: ClaudeCodeConfig,
     private readonly logger: Logger,
   ) {}
+
+  /** Apply a new config; takes effect on the next turn dispatch (SPEC §6.2). */
+  applyConfig(cfg: ClaudeCodeConfig): void {
+    this.cfg = cfg;
+  }
 
   /** Build the full shell command line. `cfg.command` is itself a shell string (SPEC §5.3.6).
    *  A non-null `resumeId` adds `--resume` so continuation turns reuse the session. */

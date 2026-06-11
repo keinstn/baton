@@ -52,7 +52,11 @@ async function main(): Promise<void> {
     workflow.path,
     { config, promptTemplate: workflow.promptTemplate },
     logger,
-    (next) => tracker.applyConfig(next.tracker),
+    (next) => {
+      tracker.applyConfig(next.tracker);
+      runner.applyConfig(next.claudeCode);
+      workspaces.applyConfig(next);
+    },
   );
 
   const orchestrator = new Orchestrator({
