@@ -29,7 +29,9 @@ export function runHookScript(
     let timedOut = false;
     const append = (chunk: Buffer) => {
       if (output.length < MAX_OUTPUT_BYTES) {
-        output += chunk.toString("utf8").slice(0, MAX_OUTPUT_BYTES - output.length);
+        output += chunk
+          .toString("utf8")
+          .slice(0, MAX_OUTPUT_BYTES - output.length);
       }
     };
     proc.stdout.on("data", append);

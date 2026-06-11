@@ -1,8 +1,8 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import { stat } from "node:fs/promises";
 import { createInterface } from "node:readline";
-import { BatonError } from "../errors.js";
 import type { ClaudeCodeConfig } from "../config/schema.js";
+import { BatonError } from "../errors.js";
 import type { Logger } from "../observability/logger.js";
 import type {
   AgentEvent,
@@ -52,10 +52,16 @@ export class ClaudeCodeRunner implements AgentRunner {
       parts.push("--allowedTools", shellQuote(this.cfg.allowedTools.join(",")));
     }
     if (this.cfg.disallowedTools.length > 0) {
-      parts.push("--disallowedTools", shellQuote(this.cfg.disallowedTools.join(",")));
+      parts.push(
+        "--disallowedTools",
+        shellQuote(this.cfg.disallowedTools.join(",")),
+      );
     }
     if (this.cfg.appendSystemPrompt) {
-      parts.push("--append-system-prompt", shellQuote(this.cfg.appendSystemPrompt));
+      parts.push(
+        "--append-system-prompt",
+        shellQuote(this.cfg.appendSystemPrompt),
+      );
     }
     parts.push(...this.cfg.extraArgs);
     return parts.join(" ");
@@ -70,7 +76,10 @@ export class ClaudeCodeRunner implements AgentRunner {
       isDir = false;
     }
     if (!isDir) {
-      throw new BatonError("invalid_workspace_cwd", `not a directory: ${workspace}`);
+      throw new BatonError(
+        "invalid_workspace_cwd",
+        `not a directory: ${workspace}`,
+      );
     }
     return { workspace, agentSessionId: null, proc: null };
   }
@@ -122,7 +131,11 @@ export class ClaudeCodeRunner implements AgentRunner {
         clearTimeout(timer);
         session.proc = null;
         if (timedOut) {
-          onEvent({ event: "turn_cancelled", timestamp: now(), message: "turn_timeout" });
+          onEvent({
+            event: "turn_cancelled",
+            timestamp: now(),
+            message: "turn_timeout",
+          });
           resolvePromise({ ok: false, error: "turn_timeout" });
         } else if (result) {
           resolvePromise(result);
@@ -147,12 +160,19 @@ export class ClaudeCodeRunner implements AgentRunner {
     try {
       msg = JSON.parse(trimmed) as Record<string, unknown>;
     } catch {
-      onEvent({ event: "malformed", timestamp: now(), message: trimmed.slice(0, 200) });
+      onEvent({
+        event: "malformed",
+        timestamp: now(),
+        message: trimmed.slice(0, 200),
+      });
       return null;
     }
     switch (msg["type"]) {
       case "system": {
-        if (msg["subtype"] === "init" && typeof msg["session_id"] === "string") {
+        if (
+          msg["subtype"] === "init" &&
+          typeof msg["session_id"] === "string"
+        ) {
           session.agentSessionId = msg["session_id"];
           onEvent({
             event: "session_started",
@@ -174,7 +194,10 @@ export class ClaudeCodeRunner implements AgentRunner {
         onEvent({
           event: ok ? "turn_completed" : "turn_failed",
           timestamp: now(),
-          message: typeof msg["result"] === "string" ? msg["result"].slice(0, 500) : undefined,
+          message:
+            typeof msg["result"] === "string"
+              ? msg["result"].slice(0, 500)
+              : undefined,
           ...(usage ? { usage } : {}),
         });
         return ok
@@ -195,7 +218,11 @@ export class ClaudeCodeRunner implements AgentRunner {
   }
 
   async stopSession(session: AgentSession): Promise<void> {
-    if (session.proc && session.proc.exitCode === null && !session.proc.killed) {
+    if (
+      session.proc &&
+      session.proc.exitCode === null &&
+      !session.proc.killed
+    ) {
       killProcessTree(session.proc);
     }
     session.proc = null;
@@ -215,11 +242,14 @@ function killProcessTree(proc: ChildProcess): void {
   proc.kill("SIGKILL");
 }
 
-function readUsage(v: unknown): { inputTokens: number; outputTokens: number } | null {
+function readUsage(
+  v: unknown,
+): { inputTokens: number; outputTokens: number } | null {
   if (typeof v !== "object" || v === null) return null;
   const u = v as Record<string, unknown>;
   const input = typeof u["input_tokens"] === "number" ? u["input_tokens"] : 0;
-  const output = typeof u["output_tokens"] === "number" ? u["output_tokens"] : 0;
+  const output =
+    typeof u["output_tokens"] === "number" ? u["output_tokens"] : 0;
   return { inputTokens: input, outputTokens: output };
 }
 
@@ -234,8 +264,15 @@ function summarizeAssistant(msg: Record<string, unknown>): AgentEvent[] {
         timestamp: now(),
         message: block["text"].slice(0, 200),
       });
-    } else if (block["type"] === "tool_use" && typeof block["name"] === "string") {
-      events.push({ event: "tool_use", timestamp: now(), message: block["name"] });
+    } else if (
+      block["type"] === "tool_use" &&
+      typeof block["name"] === "string"
+    ) {
+      events.push({
+        event: "tool_use",
+        timestamp: now(),
+        message: block["name"],
+      });
     }
   }
   if (events.length === 0) {

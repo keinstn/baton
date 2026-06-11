@@ -6,7 +6,9 @@ import { ClaudeCodeRunner, shellQuote } from "../src/agent/claude-code.js";
 import type { AgentEvent } from "../src/agent/runner.js";
 import { makeConfig, silentLogger } from "./helpers.js";
 
-async function fakeClaude(script: string): Promise<{ command: string; workspace: string }> {
+async function fakeClaude(
+  script: string,
+): Promise<{ command: string; workspace: string }> {
   const dir = await mkdtemp(join(tmpdir(), "baton-cc-"));
   const command = join(dir, "fake-claude");
   await writeFile(command, `#!/usr/bin/env bash\ncat >/dev/null\n${script}\n`);
@@ -55,7 +57,9 @@ describe("buildCommand (SPEC §10.1)", () => {
 describe("startSession (SPEC §9.5 Invariant 1)", () => {
   it("rejects a non-directory workspace cwd", async () => {
     const r = runner("claude");
-    await expect(r.startSession("/nonexistent/workspace")).rejects.toMatchObject({
+    await expect(
+      r.startSession("/nonexistent/workspace"),
+    ).rejects.toMatchObject({
       code: "invalid_workspace_cwd",
     });
   });
@@ -67,7 +71,9 @@ describe("runTurn stream-json parsing (SPEC §10.1)", () => {
     const r = runner(command);
     const session = await r.startSession(workspace);
     const events: AgentEvent[] = [];
-    const result = await r.runTurn(session, "do the thing", (e) => events.push(e));
+    const result = await r.runTurn(session, "do the thing", (e) =>
+      events.push(e),
+    );
 
     expect(result.ok).toBe(true);
     expect(session.agentSessionId).toBe("sess-123");

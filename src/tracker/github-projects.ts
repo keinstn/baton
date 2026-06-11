@@ -1,7 +1,7 @@
-import { BatonError } from "../errors.js";
-import { norm } from "../util.js";
-import type { Logger } from "../observability/logger.js";
 import type { TrackerConfig } from "../config/schema.js";
+import { BatonError } from "../errors.js";
+import type { Logger } from "../observability/logger.js";
+import { norm } from "../util.js";
 import type { Issue, TrackerClient } from "./types.js";
 
 const NETWORK_TIMEOUT_MS = 30000;
@@ -126,7 +126,11 @@ function readFieldValue(
   fieldName: string,
 ): string | null {
   for (const fv of fieldValues?.nodes ?? []) {
-    if (fv?.field?.name && fv.name !== undefined && norm(fv.field.name) === norm(fieldName)) {
+    if (
+      fv?.field?.name &&
+      fv.name !== undefined &&
+      norm(fv.field.name) === norm(fieldName)
+    ) {
       return fv.name;
     }
   }
@@ -153,7 +157,10 @@ export class GitHubProjectsClient implements TrackerClient {
     variables: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
     if (!this.cfg.token) {
-      throw new BatonError("missing_tracker_token", "tracker token is not configured");
+      throw new BatonError(
+        "missing_tracker_token",
+        "tracker token is not configured",
+      );
     }
     let res: Response;
     try {
@@ -170,13 +177,19 @@ export class GitHubProjectsClient implements TrackerClient {
       throw new BatonError("github_api_request", String(err));
     }
     if (!res.ok) {
-      throw new BatonError("github_api_status", `GitHub GraphQL HTTP ${res.status}`);
+      throw new BatonError(
+        "github_api_status",
+        `GitHub GraphQL HTTP ${res.status}`,
+      );
     }
     let body: unknown;
     try {
       body = await res.json();
     } catch (err) {
-      throw new BatonError("github_unknown_payload", `invalid JSON response: ${String(err)}`);
+      throw new BatonError(
+        "github_unknown_payload",
+        `invalid JSON response: ${String(err)}`,
+      );
     }
     const obj = body as { data?: unknown; errors?: unknown[] };
     if (Array.isArray(obj.errors) && obj.errors.length > 0) {
@@ -186,7 +199,10 @@ export class GitHubProjectsClient implements TrackerClient {
       );
     }
     if (typeof obj.data !== "object" || obj.data === null) {
-      throw new BatonError("github_unknown_payload", "GraphQL response has no data");
+      throw new BatonError(
+        "github_unknown_payload",
+        "GraphQL response has no data",
+      );
     }
     return obj.data as Record<string, unknown>;
   }
@@ -229,7 +245,9 @@ export class GitHubProjectsClient implements TrackerClient {
         `single-select field "${this.cfg.statusField}" not found on project`,
       );
     }
-    const priorityField = this.cfg.priorityField ? findField(this.cfg.priorityField) : undefined;
+    const priorityField = this.cfg.priorityField
+      ? findField(this.cfg.priorityField)
+      : undefined;
     this.meta = {
       projectId: project.id,
       statusOptions: statusField.options.map((o) => o.name ?? ""),
@@ -252,12 +270,19 @@ export class GitHubProjectsClient implements TrackerClient {
     if (content.__typename !== "Issue") return null; // drafts/PRs are never eligible (§8.2)
     const repoName = content.repository?.name;
     const nameWithOwner = content.repository?.nameWithOwner;
-    if (!content.id || content.number === undefined || !repoName || !nameWithOwner) {
+    if (
+      !content.id ||
+      content.number === undefined ||
+      !repoName ||
+      !nameWithOwner
+    ) {
       return null;
     }
     let priority: number | null = null;
     if (priorityName && meta.priorityOptions) {
-      const idx = meta.priorityOptions.findIndex((o) => norm(o) === norm(priorityName));
+      const idx = meta.priorityOptions.findIndex(
+        (o) => norm(o) === norm(priorityName),
+      );
       priority = idx >= 0 ? idx + 1 : null;
     }
     return {
@@ -289,7 +314,13 @@ export class GitHubProjectsClient implements TrackerClient {
     const priorityName = this.cfg.priorityField
       ? readFieldValue(node.fieldValues, this.cfg.priorityField)
       : null;
-    return this.normalizeContent(node.content, node.id, state, meta, priorityName);
+    return this.normalizeContent(
+      node.content,
+      node.id,
+      state,
+      meta,
+      priorityName,
+    );
   }
 
   /** Fetch all project issues whose Status is in `states` (SPEC §11.1 op 2). */
@@ -300,7 +331,10 @@ export class GitHubProjectsClient implements TrackerClient {
     const out: Issue[] = [];
     let after: string | null = null;
     for (;;) {
-      const data = await this.gql(ITEMS_QUERY, { projectId: meta.projectId, after });
+      const data = await this.gql(ITEMS_QUERY, {
+        projectId: meta.projectId,
+        after,
+      });
       const items = (data["node"] as { items?: unknown } | null)?.items as
         | {
             pageInfo?: { hasNextPage?: boolean; endCursor?: string | null };
@@ -308,14 +342,18 @@ export class GitHubProjectsClient implements TrackerClient {
           }
         | undefined;
       if (!items) {
-        throw new BatonError("github_unknown_payload", "items connection missing");
+        throw new BatonError(
+          "github_unknown_payload",
+          "items connection missing",
+        );
       }
       for (const node of items.nodes ?? []) {
         if (!node) continue;
         const issue = this.normalizeItem(node, meta);
         if (!issue) continue;
         if (!wanted.has(norm(issue.state))) continue;
-        if (this.cfg.repos && !this.cfg.repos.includes(issue.repository)) continue;
+        if (this.cfg.repos && !this.cfg.repos.includes(issue.repository))
+          continue;
         out.push(issue);
       }
       if (!items.pageInfo?.hasNextPage) break;
@@ -358,12 +396,20 @@ export class GitHubProjectsClient implements TrackerClient {
       const item = (node.projectItems?.nodes ?? []).find(
         (it) => it?.project?.id === meta.projectId,
       );
-      const state = item ? (readFieldValue(item.fieldValues, this.cfg.statusField) ?? "") : "";
+      const state = item
+        ? (readFieldValue(item.fieldValues, this.cfg.statusField) ?? "")
+        : "";
       const priorityName =
         item && this.cfg.priorityField
           ? readFieldValue(item.fieldValues, this.cfg.priorityField)
           : null;
-      const issue = this.normalizeContent(node, item?.id ?? "", state, meta, priorityName);
+      const issue = this.normalizeContent(
+        node,
+        item?.id ?? "",
+        state,
+        meta,
+        priorityName,
+      );
       if (issue) out.push(issue);
     }
     return out;

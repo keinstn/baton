@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   isDispatchEligible,
   Orchestrator,
-  sortForDispatch,
   type OrchestratorDeps,
+  sortForDispatch,
 } from "../src/orchestrator/orchestrator.js";
 import type { Issue } from "../src/tracker/types.js";
 import { makeConfig, makeIssue, silentLogger } from "./helpers.js";
@@ -39,11 +39,36 @@ function makeOrchestrator(
 describe("sortForDispatch (SPEC §8.2)", () => {
   it("orders by priority, then created_at, then identifier", () => {
     const issues = [
-      makeIssue({ id: "a", identifier: "repo-3", priority: null, createdAt: "2026-01-01T00:00:00Z" }),
-      makeIssue({ id: "b", identifier: "repo-2", priority: 2, createdAt: "2026-01-01T00:00:00Z" }),
-      makeIssue({ id: "c", identifier: "repo-1", priority: 1, createdAt: "2026-01-02T00:00:00Z" }),
-      makeIssue({ id: "d", identifier: "repo-5", priority: 1, createdAt: "2026-01-01T00:00:00Z" }),
-      makeIssue({ id: "e", identifier: "repo-4", priority: 1, createdAt: "2026-01-01T00:00:00Z" }),
+      makeIssue({
+        id: "a",
+        identifier: "repo-3",
+        priority: null,
+        createdAt: "2026-01-01T00:00:00Z",
+      }),
+      makeIssue({
+        id: "b",
+        identifier: "repo-2",
+        priority: 2,
+        createdAt: "2026-01-01T00:00:00Z",
+      }),
+      makeIssue({
+        id: "c",
+        identifier: "repo-1",
+        priority: 1,
+        createdAt: "2026-01-02T00:00:00Z",
+      }),
+      makeIssue({
+        id: "d",
+        identifier: "repo-5",
+        priority: 1,
+        createdAt: "2026-01-01T00:00:00Z",
+      }),
+      makeIssue({
+        id: "e",
+        identifier: "repo-4",
+        priority: 1,
+        createdAt: "2026-01-01T00:00:00Z",
+      }),
     ];
     expect(sortForDispatch(issues).map((i) => i.identifier)).toEqual([
       "repo-4",
@@ -59,28 +84,54 @@ describe("isDispatchEligible (SPEC §8.2)", () => {
   const config = makeConfig({ tracker: { required_labels: ["ai-ready"] } });
 
   it("requires active state, open issue, and all required labels", () => {
-    expect(isDispatchEligible(makeIssue({ labels: ["ai-ready"] }), config, emptyState)).toBe(true);
-    expect(isDispatchEligible(makeIssue({ labels: [] }), config, emptyState)).toBe(false);
     expect(
-      isDispatchEligible(makeIssue({ labels: ["ai-ready"], state: "Done" }), config, emptyState),
+      isDispatchEligible(
+        makeIssue({ labels: ["ai-ready"] }),
+        config,
+        emptyState,
+      ),
+    ).toBe(true);
+    expect(
+      isDispatchEligible(makeIssue({ labels: [] }), config, emptyState),
     ).toBe(false);
     expect(
-      isDispatchEligible(makeIssue({ labels: ["ai-ready"], state: "" }), config, emptyState),
+      isDispatchEligible(
+        makeIssue({ labels: ["ai-ready"], state: "Done" }),
+        config,
+        emptyState,
+      ),
     ).toBe(false);
     expect(
-      isDispatchEligible(makeIssue({ labels: ["ai-ready"], closed: true }), config, emptyState),
+      isDispatchEligible(
+        makeIssue({ labels: ["ai-ready"], state: "" }),
+        config,
+        emptyState,
+      ),
+    ).toBe(false);
+    expect(
+      isDispatchEligible(
+        makeIssue({ labels: ["ai-ready"], closed: true }),
+        config,
+        emptyState,
+      ),
     ).toBe(false);
   });
 
   it("compares states case-insensitively", () => {
     expect(
-      isDispatchEligible(makeIssue({ labels: ["ai-ready"], state: "todo" }), config, emptyState),
+      isDispatchEligible(
+        makeIssue({ labels: ["ai-ready"], state: "todo" }),
+        config,
+        emptyState,
+      ),
     ).toBe(true);
   });
 
   it("a blank configured label matches no issue", () => {
     const blank = makeConfig({ tracker: { required_labels: [" "] } });
-    expect(isDispatchEligible(makeIssue({ labels: ["x"] }), blank, emptyState)).toBe(false);
+    expect(
+      isDispatchEligible(makeIssue({ labels: ["x"] }), blank, emptyState),
+    ).toBe(false);
   });
 
   it("applies the repos filter", () => {
@@ -91,30 +142,42 @@ describe("isDispatchEligible (SPEC §8.2)", () => {
   it("skips issues already running or claimed", () => {
     const issue = makeIssue({ labels: ["ai-ready"] });
     expect(
-      isDispatchEligible(issue, config, { running: new Set([issue.id]), claimed: new Set() }),
+      isDispatchEligible(issue, config, {
+        running: new Set([issue.id]),
+        claimed: new Set(),
+      }),
     ).toBe(false);
     expect(
-      isDispatchEligible(issue, config, { running: new Set(), claimed: new Set([issue.id]) }),
+      isDispatchEligible(issue, config, {
+        running: new Set(),
+        claimed: new Set([issue.id]),
+      }),
     ).toBe(false);
   });
 
   it("blocks Todo issues with non-terminal blockers only", () => {
     const blocked = makeIssue({
       labels: ["ai-ready"],
-      blockedBy: [{ id: "I_9", identifier: "repo-9", state: "Todo", terminal: false }],
+      blockedBy: [
+        { id: "I_9", identifier: "repo-9", state: "Todo", terminal: false },
+      ],
     });
     expect(isDispatchEligible(blocked, config, emptyState)).toBe(false);
 
     const terminalBlocker = makeIssue({
       labels: ["ai-ready"],
-      blockedBy: [{ id: "I_9", identifier: "repo-9", state: "Done", terminal: true }],
+      blockedBy: [
+        { id: "I_9", identifier: "repo-9", state: "Done", terminal: true },
+      ],
     });
     expect(isDispatchEligible(terminalBlocker, config, emptyState)).toBe(true);
 
     const inProgress = makeIssue({
       labels: ["ai-ready"],
       state: "In Progress",
-      blockedBy: [{ id: "I_9", identifier: "repo-9", state: "Todo", terminal: false }],
+      blockedBy: [
+        { id: "I_9", identifier: "repo-9", state: "Todo", terminal: false },
+      ],
     });
     expect(isDispatchEligible(inProgress, config, emptyState)).toBe(true);
   });
@@ -128,13 +191,14 @@ describe("tick dispatch (SPEC §8.1, §8.3)", () => {
       makeIssue({ id: "I_3", identifier: "repo-3", priority: 3 }),
     ];
     const config = makeConfig({ agent: { max_concurrent_agents: 2 } });
-    const { orchestrator, runWorker } = makeOrchestrator(issues, { config: () => config });
+    const { orchestrator, runWorker } = makeOrchestrator(issues, {
+      config: () => config,
+    });
     await orchestrator.tick();
     expect(runWorker).toHaveBeenCalledTimes(2);
-    expect(runWorker.mock.calls.map((c) => (c[0] as Issue).identifier)).toEqual([
-      "repo-2",
-      "repo-1",
-    ]);
+    expect(runWorker.mock.calls.map((c) => (c[0] as Issue).identifier)).toEqual(
+      ["repo-2", "repo-1"],
+    );
     expect(orchestrator.running.size).toBe(2);
     expect(orchestrator.claimed.size).toBe(2);
   });
@@ -154,16 +218,21 @@ describe("tick dispatch (SPEC §8.1, §8.3)", () => {
       runWorker: vi.fn(never),
     });
     await orchestrator.tick();
-    const dispatched = runWorker.mock.calls.map((c) => (c[0] as Issue).identifier);
+    const dispatched = runWorker.mock.calls.map(
+      (c) => (c[0] as Issue).identifier,
+    );
     expect(dispatched).toContain("repo-3");
     expect(dispatched.filter((d) => d !== "repo-3")).toHaveLength(1);
   });
 
   it("does not double-dispatch an issue claimed in the same tick", async () => {
     const issue = makeIssue();
-    const { orchestrator, runWorker } = makeOrchestrator([issue, { ...issue }], {
-      runWorker: vi.fn(() => new Promise<void>(() => {})),
-    });
+    const { orchestrator, runWorker } = makeOrchestrator(
+      [issue, { ...issue }],
+      {
+        runWorker: vi.fn(() => new Promise<void>(() => {})),
+      },
+    );
     await orchestrator.tick();
     expect(runWorker).toHaveBeenCalledTimes(1);
   });
@@ -201,9 +270,15 @@ describe("tick dispatch (SPEC §8.1, §8.3)", () => {
   });
 
   it("skips dispatch when preflight validation fails (SPEC §6.3)", async () => {
-    const { orchestrator, fetchCandidateIssues, runWorker } = makeOrchestrator([makeIssue()], {
-      validate: () => ({ ok: false, errors: [{ code: "missing_tracker_token", message: "x" }] }),
-    });
+    const { orchestrator, fetchCandidateIssues, runWorker } = makeOrchestrator(
+      [makeIssue()],
+      {
+        validate: () => ({
+          ok: false,
+          errors: [{ code: "missing_tracker_token", message: "x" }],
+        }),
+      },
+    );
     await orchestrator.tick();
     expect(fetchCandidateIssues).not.toHaveBeenCalled();
     expect(runWorker).not.toHaveBeenCalled();
@@ -213,7 +288,9 @@ describe("tick dispatch (SPEC §8.1, §8.3)", () => {
 describe("agent updates and token accounting (SPEC §13.5)", () => {
   it("tracks session id, last event, and accumulates usage", async () => {
     const issue = makeIssue();
-    let emit: ((event: Parameters<Orchestrator["onAgentUpdate"]>[1]) => void) | null = null;
+    let emit:
+      | ((event: Parameters<Orchestrator["onAgentUpdate"]>[1]) => void)
+      | null = null;
     const { orchestrator } = makeOrchestrator([issue], {
       runWorker: vi.fn((_, __, onEvent) => {
         emit = onEvent;

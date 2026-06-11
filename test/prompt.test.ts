@@ -40,14 +40,17 @@ describe("renderPrompt (SPEC §5.4, §12)", () => {
       await renderPrompt("{{ issue.title | bogus_filter }}", makeIssue(), null);
     } catch (err) {
       expect(
-        isBatonError(err, "template_parse_error") || isBatonError(err, "template_render_error"),
+        isBatonError(err, "template_parse_error") ||
+          isBatonError(err, "template_render_error"),
       ).toBe(true);
     }
   });
 
   it("exposes blockers for iteration", async () => {
     const issue = makeIssue({
-      blockedBy: [{ id: "I_9", identifier: "repo-9", state: "Todo", terminal: false }],
+      blockedBy: [
+        { id: "I_9", identifier: "repo-9", state: "Todo", terminal: false },
+      ],
     });
     const result = await renderPrompt(
       "{% for b in issue.blocked_by %}blocked by {{ b.identifier }}{% endfor %}",

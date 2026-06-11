@@ -1,13 +1,13 @@
 #!/usr/bin/env node
-import { buildConfig, validateDispatchConfig } from "./config/schema.js";
-import { loadWorkflow } from "./workflow/loader.js";
-import { Logger } from "./observability/logger.js";
-import { GitHubProjectsClient } from "./tracker/github-projects.js";
-import { WorkspaceManager } from "./workspace/manager.js";
 import { ClaudeCodeRunner } from "./agent/claude-code.js";
-import { createWorker } from "./orchestrator/worker.js";
-import { Orchestrator } from "./orchestrator/orchestrator.js";
+import { buildConfig, validateDispatchConfig } from "./config/schema.js";
 import { isBatonError } from "./errors.js";
+import { Logger } from "./observability/logger.js";
+import { Orchestrator } from "./orchestrator/orchestrator.js";
+import { createWorker } from "./orchestrator/worker.js";
+import { GitHubProjectsClient } from "./tracker/github-projects.js";
+import { loadWorkflow } from "./workflow/loader.js";
+import { WorkspaceManager } from "./workspace/manager.js";
 
 async function main(): Promise<void> {
   const logger = new Logger({ service: "baton" });
@@ -21,13 +21,18 @@ async function main(): Promise<void> {
   const validation = validateDispatchConfig(config);
   if (!validation.ok) {
     for (const err of validation.errors) {
-      logger.error("startup validation failed", { code: err.code, detail: err.message });
+      logger.error("startup validation failed", {
+        code: err.code,
+        detail: err.message,
+      });
     }
     process.exitCode = 1;
     return;
   }
   if (config.agent.kind !== "claude_code") {
-    logger.error("agent kind not implemented in Phase 1", { kind: config.agent.kind });
+    logger.error("agent kind not implemented in Phase 1", {
+      kind: config.agent.kind,
+    });
     process.exitCode = 1;
     return;
   }

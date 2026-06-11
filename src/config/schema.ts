@@ -76,7 +76,10 @@ function isMap(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-function section(raw: Record<string, unknown>, key: string): Record<string, unknown> {
+function section(
+  raw: Record<string, unknown>,
+  key: string,
+): Record<string, unknown> {
   const v = raw[key];
   return isMap(v) ? v : {};
 }
@@ -95,14 +98,20 @@ function strList(v: unknown): string[] | null {
 function optPosInt(v: unknown, name: string): number | undefined {
   if (v === undefined || v === null) return undefined;
   if (typeof v === "number" && Number.isInteger(v) && v > 0) return v;
-  throw new BatonError("config_invalid", `${name} must be a positive integer, got ${String(v)}`);
+  throw new BatonError(
+    "config_invalid",
+    `${name} must be a positive integer, got ${String(v)}`,
+  );
 }
 
 /** Any-integer field (stall_timeout_ms may be <= 0 to disable stall detection). */
 function optInt(v: unknown, name: string): number | undefined {
   if (v === undefined || v === null) return undefined;
   if (typeof v === "number" && Number.isInteger(v)) return v;
-  throw new BatonError("config_invalid", `${name} must be an integer, got ${String(v)}`);
+  throw new BatonError(
+    "config_invalid",
+    `${name} must be an integer, got ${String(v)}`,
+  );
 }
 
 /**
@@ -110,7 +119,10 @@ function optInt(v: unknown, name: string): number | undefined {
  * is replaced by the environment variable; empty/unset resolves to null
  * ("treat as missing"). Any other value passes through unchanged.
  */
-export function resolveEnvValue(v: string, env: Env = process.env): string | null {
+export function resolveEnvValue(
+  v: string,
+  env: Env = process.env,
+): string | null {
   const m = /^\$([A-Za-z_][A-Za-z0-9_]*)$/.exec(v.trim());
   if (!m) return v;
   const resolved = env[m[1] as string];
@@ -121,10 +133,17 @@ export function resolveEnvValue(v: string, env: Env = process.env): string | nul
  * Expand a local filesystem path value (SPEC §6.1): `$VAR` indirection,
  * `~` home expansion, then resolution relative to the WORKFLOW.md directory.
  */
-export function expandPath(p: string, baseDir: string, env: Env = process.env): string {
+export function expandPath(
+  p: string,
+  baseDir: string,
+  env: Env = process.env,
+): string {
   const resolved = resolveEnvValue(p, env);
   if (resolved === null) {
-    throw new BatonError("config_invalid", `path value ${p} resolves to an empty value`);
+    throw new BatonError(
+      "config_invalid",
+      `path value ${p} resolves to an empty value`,
+    );
   }
   let v = resolved;
   if (v === "~" || v.startsWith("~/")) {
@@ -163,7 +182,9 @@ export function buildConfig(
   };
 
   const p = section(raw, "polling");
-  const polling = { intervalMs: optPosInt(p["interval_ms"], "polling.interval_ms") ?? 30000 };
+  const polling = {
+    intervalMs: optPosInt(p["interval_ms"], "polling.interval_ms") ?? 30000,
+  };
 
   const w = section(raw, "workspace");
   const rootRaw = str(w["root"]);
@@ -195,10 +216,13 @@ export function buildConfig(
   }
   const agent: AgentConfig = {
     kind: str(a["kind"]),
-    maxConcurrentAgents: optPosInt(a["max_concurrent_agents"], "agent.max_concurrent_agents") ?? 10,
+    maxConcurrentAgents:
+      optPosInt(a["max_concurrent_agents"], "agent.max_concurrent_agents") ??
+      10,
     maxTurns: optPosInt(a["max_turns"], "agent.max_turns") ?? 20,
     maxRetryBackoffMs:
-      optPosInt(a["max_retry_backoff_ms"], "agent.max_retry_backoff_ms") ?? 300000,
+      optPosInt(a["max_retry_backoff_ms"], "agent.max_retry_backoff_ms") ??
+      300000,
     maxConcurrentAgentsByState,
   };
 
@@ -211,8 +235,11 @@ export function buildConfig(
     disallowedTools: strList(cc["disallowed_tools"]) ?? [],
     appendSystemPrompt: str(cc["append_system_prompt"]),
     extraArgs: strList(cc["extra_args"]) ?? [],
-    turnTimeoutMs: optPosInt(cc["turn_timeout_ms"], "claude_code.turn_timeout_ms") ?? 3600000,
-    stallTimeoutMs: optInt(cc["stall_timeout_ms"], "claude_code.stall_timeout_ms") ?? 300000,
+    turnTimeoutMs:
+      optPosInt(cc["turn_timeout_ms"], "claude_code.turn_timeout_ms") ??
+      3600000,
+    stallTimeoutMs:
+      optInt(cc["stall_timeout_ms"], "claude_code.stall_timeout_ms") ?? 300000,
   };
 
   const cp = section(raw, "copilot");
@@ -223,8 +250,10 @@ export function buildConfig(
     allowTools: strList(cp["allow_tools"]) ?? [],
     denyTools: strList(cp["deny_tools"]) ?? [],
     extraArgs: strList(cp["extra_args"]) ?? [],
-    turnTimeoutMs: optPosInt(cp["turn_timeout_ms"], "copilot.turn_timeout_ms") ?? 3600000,
-    stallTimeoutMs: optInt(cp["stall_timeout_ms"], "copilot.stall_timeout_ms") ?? 300000,
+    turnTimeoutMs:
+      optPosInt(cp["turn_timeout_ms"], "copilot.turn_timeout_ms") ?? 3600000,
+    stallTimeoutMs:
+      optInt(cp["stall_timeout_ms"], "copilot.stall_timeout_ms") ?? 300000,
   };
 
   return { tracker, polling, workspace, hooks, agent, claudeCode, copilot };
@@ -255,7 +284,8 @@ export function validateDispatchConfig(config: BatonConfig): ValidationResult {
   if (!tracker.token) {
     errors.push({
       code: "missing_tracker_token",
-      message: "tracker.token is missing after $VAR resolution (set GITHUB_TOKEN)",
+      message:
+        "tracker.token is missing after $VAR resolution (set GITHUB_TOKEN)",
     });
   }
   if (!tracker.owner || tracker.projectNumber === null) {
@@ -271,7 +301,9 @@ export function validateDispatchConfig(config: BatonConfig): ValidationResult {
     });
   } else {
     const command =
-      agent.kind === "claude_code" ? config.claudeCode.command : config.copilot.command;
+      agent.kind === "claude_code"
+        ? config.claudeCode.command
+        : config.copilot.command;
     if (!command || command.trim() === "") {
       errors.push({
         code: "missing_agent_command",

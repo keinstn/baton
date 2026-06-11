@@ -34,14 +34,20 @@ export function parseWorkflow(text: string): {
     }
   }
   if (end === -1) {
-    throw new BatonError("workflow_parse_error", "unterminated YAML front matter");
+    throw new BatonError(
+      "workflow_parse_error",
+      "unterminated YAML front matter",
+    );
   }
   const frontMatter = lines.slice(1, end).join("\n");
   let parsed: unknown;
   try {
     parsed = parseYaml(frontMatter);
   } catch (err) {
-    throw new BatonError("workflow_parse_error", `invalid YAML front matter: ${String(err)}`);
+    throw new BatonError(
+      "workflow_parse_error",
+      `invalid YAML front matter: ${String(err)}`,
+    );
   }
   if (parsed === null || parsed === undefined) {
     parsed = {};
@@ -68,7 +74,10 @@ export async function loadWorkflow(path: string): Promise<WorkflowDefinition> {
   try {
     text = await readFile(absPath, "utf8");
   } catch {
-    throw new BatonError("missing_workflow_file", `cannot read workflow file: ${absPath}`);
+    throw new BatonError(
+      "missing_workflow_file",
+      `cannot read workflow file: ${absPath}`,
+    );
   }
   const { config, promptTemplate } = parseWorkflow(text);
   return { config, promptTemplate, path: absPath, dir: dirname(absPath) };

@@ -2,14 +2,20 @@ import { mkdtemp, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { sanitizeWorkspaceKey, WorkspaceManager } from "../src/workspace/manager.js";
+import {
+  sanitizeWorkspaceKey,
+  WorkspaceManager,
+} from "../src/workspace/manager.js";
 import { makeConfig, makeIssue, silentLogger } from "./helpers.js";
 
 async function tempRoot(): Promise<string> {
   return mkdtemp(join(tmpdir(), "baton-ws-"));
 }
 
-function manager(root: string, hooks: Record<string, unknown> = {}): WorkspaceManager {
+function manager(
+  root: string,
+  hooks: Record<string, unknown> = {},
+): WorkspaceManager {
   const config = makeConfig({ workspace: { root }, hooks });
   return new WorkspaceManager(config, silentLogger);
 }
@@ -70,7 +76,8 @@ describe("workspace creation and hooks (SPEC §9.2, §9.4)", () => {
   it("exposes BATON_* environment variables to hooks", async () => {
     const root = await tempRoot();
     const m = manager(root, {
-      after_create: 'echo "$BATON_ISSUE_IDENTIFIER:$BATON_ISSUE_NUMBER" > meta.txt',
+      after_create:
+        'echo "$BATON_ISSUE_IDENTIFIER:$BATON_ISSUE_NUMBER" > meta.txt',
     });
     await m.createForIssue(makeIssue({ identifier: "repo-7", number: 7 }));
     const content = await readFile(join(root, "repo-7", "meta.txt"), "utf8");
@@ -80,7 +87,9 @@ describe("workspace creation and hooks (SPEC §9.2, §9.4)", () => {
   it("after_create failure aborts creation and removes the directory", async () => {
     const root = await tempRoot();
     const m = manager(root, { after_create: "exit 1" });
-    await expect(m.createForIssue(makeIssue())).rejects.toMatchObject({ code: "hook_failed" });
+    await expect(m.createForIssue(makeIssue())).rejects.toMatchObject({
+      code: "hook_failed",
+    });
     expect(await exists(join(root, "repo-1"))).toBe(false);
   });
 
@@ -91,7 +100,9 @@ describe("workspace creation and hooks (SPEC §9.2, §9.4)", () => {
       hooks: { after_create: "sleep 5", timeout_ms: 200 },
     });
     const m = new WorkspaceManager(config, silentLogger);
-    await expect(m.createForIssue(makeIssue())).rejects.toMatchObject({ code: "hook_failed" });
+    await expect(m.createForIssue(makeIssue())).rejects.toMatchObject({
+      code: "hook_failed",
+    });
   });
 
   it("before_run failure aborts the attempt", async () => {
@@ -99,7 +110,9 @@ describe("workspace creation and hooks (SPEC §9.2, §9.4)", () => {
     const m = manager(root, { before_run: "exit 2" });
     const issue = makeIssue();
     const ws = await m.createForIssue(issue);
-    await expect(m.runBeforeRun(issue, ws.path)).rejects.toMatchObject({ code: "hook_failed" });
+    await expect(m.runBeforeRun(issue, ws.path)).rejects.toMatchObject({
+      code: "hook_failed",
+    });
   });
 
   it("after_run failure is logged and ignored", async () => {

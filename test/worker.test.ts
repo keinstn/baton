@@ -2,8 +2,6 @@ import { mkdtemp, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createWorker } from "../src/orchestrator/worker.js";
-import { WorkspaceManager } from "../src/workspace/manager.js";
 import type {
   AgentEvent,
   AgentEventCallback,
@@ -11,6 +9,8 @@ import type {
   AgentSession,
   TurnResult,
 } from "../src/agent/runner.js";
+import { createWorker } from "../src/orchestrator/worker.js";
+import { WorkspaceManager } from "../src/workspace/manager.js";
 import { makeConfig, makeIssue, silentLogger } from "./helpers.js";
 
 class FakeRunner implements AgentRunner {
@@ -30,7 +30,11 @@ class FakeRunner implements AgentRunner {
   ): Promise<TurnResult> {
     this.calls.push("turn");
     this.lastPrompt = prompt;
-    onEvent({ event: "session_started", timestamp: "t", payload: { session_id: "sess-1" } });
+    onEvent({
+      event: "session_started",
+      timestamp: "t",
+      payload: { session_id: "sess-1" },
+    });
     return this.ok ? { ok: true } : { ok: false, error: "boom" };
   }
 
@@ -39,7 +43,9 @@ class FakeRunner implements AgentRunner {
   }
 }
 
-async function setup(opts: { runnerOk?: boolean; hooks?: Record<string, unknown> } = {}) {
+async function setup(
+  opts: { runnerOk?: boolean; hooks?: Record<string, unknown> } = {},
+) {
   const root = await mkdtemp(join(tmpdir(), "baton-worker-"));
   const config = makeConfig({ workspace: { root }, hooks: opts.hooks ?? {} });
   const workspaces = new WorkspaceManager(config, silentLogger);
@@ -78,7 +84,9 @@ describe("worker attempt (SPEC §16.5, Phase 1 single turn)", () => {
   });
 
   it("aborts before starting the agent when before_run fails (SPEC §9.4)", async () => {
-    const { runner, runWorker } = await setup({ hooks: { before_run: "exit 1" } });
+    const { runner, runWorker } = await setup({
+      hooks: { before_run: "exit 1" },
+    });
     await expect(runWorker(makeIssue(), null, () => {})).rejects.toMatchObject({
       code: "hook_failed",
     });

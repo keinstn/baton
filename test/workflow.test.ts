@@ -7,7 +7,8 @@ import { loadWorkflow, parseWorkflow } from "../src/workflow/loader.js";
 
 describe("parseWorkflow (SPEC §5.2)", () => {
   it("splits YAML front matter and trimmed prompt body", () => {
-    const text = "---\ntracker:\n  kind: github_projects\n---\n\nDo the work.\n\n";
+    const text =
+      "---\ntracker:\n  kind: github_projects\n---\n\nDo the work.\n\n";
     const result = parseWorkflow(text);
     expect(result.config).toEqual({ tracker: { kind: "github_projects" } });
     expect(result.promptTemplate).toBe("Do the work.");
@@ -65,7 +66,9 @@ describe("loadWorkflow (SPEC §5.1)", () => {
   });
 
   it("returns missing_workflow_file for unreadable paths", async () => {
-    await expect(loadWorkflow("/nonexistent/WORKFLOW.md")).rejects.toMatchObject({
+    await expect(
+      loadWorkflow("/nonexistent/WORKFLOW.md"),
+    ).rejects.toMatchObject({
       code: "missing_workflow_file",
     });
   });
