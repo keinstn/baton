@@ -49,6 +49,13 @@ export interface CopilotConfig {
   stallTimeoutMs: number;
 }
 
+export interface ServerConfig {
+  /** Loopback by default (SPEC §13.7); operators may override but external bind is discouraged. */
+  host: string;
+  /** When null, the HTTP extension is disabled. CLI `--port` takes precedence over this value. */
+  port: number | null;
+}
+
 export interface HooksConfig {
   afterCreate: string | null;
   beforeRun: string | null;
@@ -65,6 +72,7 @@ export interface BatonConfig {
   agent: AgentConfig;
   claudeCode: ClaudeCodeConfig;
   copilot: CopilotConfig;
+  server: ServerConfig;
 }
 
 export const SUPPORTED_TRACKER_KINDS = ["github_projects"];
@@ -253,7 +261,39 @@ export function buildConfig(
       optInt(cp.stall_timeout_ms, "copilot.stall_timeout_ms") ?? 300000,
   };
 
-  return { tracker, polling, workspace, hooks, agent, claudeCode, copilot };
+  const s = section(raw, "server");
+  const portRaw = s.port;
+  let port: number | null = null;
+  if (portRaw !== undefined && portRaw !== null) {
+    if (
+      typeof portRaw === "number" &&
+      Number.isInteger(portRaw) &&
+      portRaw >= 1 &&
+      portRaw <= 65535
+    ) {
+      port = portRaw;
+    } else {
+      throw new BatonError(
+        "config_invalid",
+        `server.port must be an integer in [1, 65535], got ${String(portRaw)}`,
+      );
+    }
+  }
+  const server: ServerConfig = {
+    host: str(s.host) ?? "127.0.0.1",
+    port,
+  };
+
+  return {
+    tracker,
+    polling,
+    workspace,
+    hooks,
+    agent,
+    claudeCode,
+    copilot,
+    server,
+  };
 }
 
 export interface ValidationError {

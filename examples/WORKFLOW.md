@@ -22,6 +22,10 @@ agent:
   kind: claude_code
   max_concurrent_agents: 3
   max_turns: 20
+server:
+  # OPTIONAL HTTP dashboard (SPEC §13.7). Omit `port` to disable. CLI
+  # `--port N` overrides this value. Loopback bind (`127.0.0.1`) by default.
+  port: 8787
 claude_code:
   permission_mode: acceptEdits
   allowed_tools:
