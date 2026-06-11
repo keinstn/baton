@@ -259,6 +259,11 @@ export class Orchestrator {
   private async runTick(): Promise<void> {
     const log = this.deps.logger;
 
+    log.debug("tick start", {
+      running: this.running.size,
+      retrying: this.retries.size,
+    });
+
     // SPEC §8.1: reconcile running issues before dispatching.
     await this.reconcile();
 
@@ -278,23 +283,41 @@ export class Orchestrator {
       issues = await this.deps.tracker.fetchCandidateIssues();
     } catch (err) {
       // SPEC §11.4: candidate fetch failure → log and skip dispatch this tick.
-      log.error("candidate fetch failed", { error: String(err) });
+      const cause = err instanceof Error && err.cause ? String(err.cause) : undefined;
+      log.error("candidate fetch failed", { error: String(err), ...(cause && { cause }) });
       return;
     }
 
+    log.debug("candidates fetched", { count: issues.length });
+
     const config = this.deps.config();
+    let dispatched = 0;
     for (const issue of sortForDispatch(issues)) {
-      if (this.availableSlots(config) <= 0) break;
+      if (this.availableSlots(config) <= 0) {
+        log.debug("no available slots; stopping dispatch", { remaining_candidates: issues.length - dispatched });
+        break;
+      }
       if (
         !isDispatchEligible(issue, config, {
           running: new Set(this.running.keys()),
           claimed: this.claimed,
         })
       ) {
+        log.debug("issue skipped (ineligible)", { issue_identifier: issue.identifier, state: issue.state });
         continue;
       }
-      if (!this.hasStateSlot(issue, config)) continue;
+      if (!this.hasStateSlot(issue, config)) {
+        log.debug("issue skipped (state slot full)", { issue_identifier: issue.identifier, state: issue.state });
+        continue;
+      }
       this.dispatch(issue, null);
+      dispatched += 1;
+    }
+
+    if (dispatched === 0 && this.running.size === 0) {
+      log.debug("tick complete: nothing to dispatch", { candidates: issues.length });
+    } else {
+      log.debug("tick complete", { dispatched, running: this.running.size });
     }
   }
 
@@ -433,13 +456,33 @@ export class Orchestrator {
     if (!entry) return;
     entry.lastEvent = event.event;
     entry.lastEventAtMs = this.now();
+
+    const log = this.deps.logger.child({
+      issue_id: issueId,
+      issue_identifier: entry.identifier,
+    });
+
     if (event.event === "session_started") {
       const sessionId = event.payload?.session_id;
       if (typeof sessionId === "string") entry.sessionId = sessionId;
-    }
-    if (event.event === "turn_completed") {
+      log.debug("agent event: session_started", { session_id: sessionId });
+    } else if (event.event === "tool_use") {
+      log.info("agent tool use", { tool: event.message });
+    } else if (event.event === "turn_completed") {
       entry.turnCount += 1;
+      log.debug("agent event: turn_completed", { turn_count: entry.turnCount });
+    } else if (event.event === "turn_failed" || event.event === "turn_cancelled") {
+      log.debug(`agent event: ${event.event}`, {
+        message: event.message,
+      });
+    } else if (event.event === "notification" && event.message) {
+      log.debug("agent event: notification", {
+        message: event.message.slice(0, 200),
+      });
+    } else if (event.event === "malformed") {
+      log.warn("agent output: malformed line", { content: event.message });
     }
+
     if (event.usage) {
       entry.inputTokens += event.usage.inputTokens;
       entry.outputTokens += event.usage.outputTokens;

@@ -85,6 +85,9 @@ export class GitHubProjectsClient implements TrackerClient {
         "tracker token is not configured",
       );
     }
+    const varKeys = Object.keys(variables).join(",");
+    const startMs = Date.now();
+    this.logger?.debug("github api request", { variables: varKeys });
     let res: Response;
     try {
       res = await this.fetchFn(this.cfg.endpoint, {
@@ -97,8 +100,13 @@ export class GitHubProjectsClient implements TrackerClient {
         signal: AbortSignal.timeout(NETWORK_TIMEOUT_MS),
       });
     } catch (err) {
-      throw new BatonError("github_api_request", String(err));
+      const cause = err instanceof Error && err.cause ? ` (cause: ${String(err.cause)})` : "";
+      throw new BatonError("github_api_request", `${String(err)}${cause}`);
     }
+    this.logger?.debug("github api response", {
+      status: res.status,
+      duration_ms: Date.now() - startMs,
+    });
     if (!res.ok) {
       throw new BatonError(
         "github_api_status",
