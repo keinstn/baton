@@ -2,7 +2,7 @@ export type LogFields = Record<string, unknown>;
 export type LogSink = (line: string) => void;
 
 const defaultSink: LogSink = (line) => {
-  process.stderr.write(line + "\n");
+  process.stderr.write(`${line}\n`);
 };
 
 /**

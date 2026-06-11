@@ -167,7 +167,7 @@ describe("applyConfig (SPEC §6.2 hot-reload)", () => {
     const { Logger } = await import("../src/observability/logger.js");
     const warnLogger = new Logger({}, (line) => {
       const entry = JSON.parse(line) as Record<string, unknown>;
-      if (entry["level"] === "warn") warnMessages.push(String(entry["msg"]));
+      if (entry.level === "warn") warnMessages.push(String(entry.msg));
     });
 
     const config = makeConfig({ workspace: { root: oldRoot } });
@@ -182,7 +182,9 @@ describe("applyConfig (SPEC §6.2 hot-reload)", () => {
     expect(ws.path.startsWith(newRoot)).toBe(true);
 
     // A warning should have been emitted about the root change.
-    expect(warnMessages.some((msg) => msg.includes("workspace.root changed"))).toBe(true);
+    expect(
+      warnMessages.some((msg) => msg.includes("workspace.root changed")),
+    ).toBe(true);
   });
 
   it("does not log a warning when workspace.root is unchanged", async () => {
@@ -192,7 +194,7 @@ describe("applyConfig (SPEC §6.2 hot-reload)", () => {
     const { Logger } = await import("../src/observability/logger.js");
     const warnLogger = new Logger({}, (line) => {
       const entry = JSON.parse(line) as Record<string, unknown>;
-      if (entry["level"] === "warn") warnMessages.push(String(entry["msg"]));
+      if (entry.level === "warn") warnMessages.push(String(entry.msg));
     });
 
     const config = makeConfig({ workspace: { root } });

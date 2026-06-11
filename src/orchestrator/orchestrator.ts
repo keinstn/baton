@@ -365,7 +365,7 @@ export class Orchestrator {
     entry.lastEvent = event.event;
     entry.lastEventAtMs = this.now();
     if (event.event === "session_started") {
-      const sessionId = event.payload?.["session_id"];
+      const sessionId = event.payload?.session_id;
       if (typeof sessionId === "string") entry.sessionId = sessionId;
     }
     if (event.usage) {

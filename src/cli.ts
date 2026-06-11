@@ -132,6 +132,6 @@ async function main(): Promise<void> {
 
 main().catch((err: unknown) => {
   const msg = isBatonError(err) ? `${err.code}: ${err.message}` : String(err);
-  process.stderr.write(JSON.stringify({ level: "error", msg }) + "\n");
+  process.stderr.write(`${JSON.stringify({ level: "error", msg })}\n`);
   process.exit(1);
 });

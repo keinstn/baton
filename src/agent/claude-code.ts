@@ -14,7 +14,7 @@ import type {
 
 /** Quote a string for safe interpolation into a bash -lc command line. */
 export function shellQuote(s: string): string {
-  return "'" + s.replace(/'/g, "'\\''") + "'";
+  return `'${s.replace(/'/g, "'\\''")}'`;
 }
 
 function now(): string {
@@ -31,7 +31,7 @@ function now(): string {
 export class ClaudeCodeRunner implements AgentRunner {
   constructor(
     private cfg: ClaudeCodeConfig,
-    private readonly logger: Logger,
+    readonly _logger: Logger,
   ) {}
 
   /** Apply a new config; takes effect on the next turn dispatch (SPEC §6.2). */
@@ -180,13 +180,10 @@ export class ClaudeCodeRunner implements AgentRunner {
       });
       return null;
     }
-    switch (msg["type"]) {
+    switch (msg.type) {
       case "system": {
-        if (
-          msg["subtype"] === "init" &&
-          typeof msg["session_id"] === "string"
-        ) {
-          session.agentSessionId = msg["session_id"];
+        if (msg.subtype === "init" && typeof msg.session_id === "string") {
+          session.agentSessionId = msg.session_id;
           // session_started is emitted once, on the first turn, carrying the
           // composite id `<agent_session_id>-1`; continuation turns increment
           // turn_number instead of re-emitting (SPEC §10.1, §17.5).
@@ -195,7 +192,7 @@ export class ClaudeCodeRunner implements AgentRunner {
               event: "session_started",
               timestamp: now(),
               payload: {
-                session_id: `${msg["session_id"]}-${session.turnNumber}`,
+                session_id: `${msg.session_id}-${session.turnNumber}`,
               },
             });
           }
@@ -209,14 +206,14 @@ export class ClaudeCodeRunner implements AgentRunner {
         return null;
       }
       case "result": {
-        const ok = msg["is_error"] !== true;
-        const usage = readUsage(msg["usage"]);
+        const ok = msg.is_error !== true;
+        const usage = readUsage(msg.usage);
         onEvent({
           event: ok ? "turn_completed" : "turn_failed",
           timestamp: now(),
           message:
-            typeof msg["result"] === "string"
-              ? msg["result"].slice(0, 500)
+            typeof msg.result === "string"
+              ? msg.result.slice(0, 500)
               : undefined,
           ...(usage ? { usage } : {}),
         });
@@ -225,9 +222,9 @@ export class ClaudeCodeRunner implements AgentRunner {
           : {
               ok: false,
               error:
-                typeof msg["result"] === "string"
-                  ? msg["result"].slice(0, 500)
-                  : `result subtype=${String(msg["subtype"])}`,
+                typeof msg.result === "string"
+                  ? msg.result.slice(0, 500)
+                  : `result subtype=${String(msg.subtype)}`,
             };
       }
       default: {
@@ -267,31 +264,27 @@ function readUsage(
 ): { inputTokens: number; outputTokens: number } | null {
   if (typeof v !== "object" || v === null) return null;
   const u = v as Record<string, unknown>;
-  const input = typeof u["input_tokens"] === "number" ? u["input_tokens"] : 0;
-  const output =
-    typeof u["output_tokens"] === "number" ? u["output_tokens"] : 0;
+  const input = typeof u.input_tokens === "number" ? u.input_tokens : 0;
+  const output = typeof u.output_tokens === "number" ? u.output_tokens : 0;
   return { inputTokens: input, outputTokens: output };
 }
 
 function summarizeAssistant(msg: Record<string, unknown>): AgentEvent[] {
   const events: AgentEvent[] = [];
-  const message = msg["message"] as { content?: unknown } | undefined;
+  const message = msg.message as { content?: unknown } | undefined;
   const content = Array.isArray(message?.content) ? message.content : [];
   for (const block of content as Record<string, unknown>[]) {
-    if (block["type"] === "text" && typeof block["text"] === "string") {
+    if (block.type === "text" && typeof block.text === "string") {
       events.push({
         event: "notification",
         timestamp: now(),
-        message: block["text"].slice(0, 200),
+        message: block.text.slice(0, 200),
       });
-    } else if (
-      block["type"] === "tool_use" &&
-      typeof block["name"] === "string"
-    ) {
+    } else if (block.type === "tool_use" && typeof block.name === "string") {
       events.push({
         event: "tool_use",
         timestamp: now(),
-        message: block["name"],
+        message: block.name,
       });
     }
   }

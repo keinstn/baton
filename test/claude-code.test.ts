@@ -67,7 +67,11 @@ describe("applyConfig (SPEC §6.2 hot-reload)", () => {
     expect(r.buildCommand()).toContain("--permission-mode 'acceptEdits'");
 
     const updatedConfig = makeConfig({
-      claude_code: { command: "claude", permission_mode: "bypassPermissions", model: "claude-haiku-4-5" },
+      claude_code: {
+        command: "claude",
+        permission_mode: "bypassPermissions",
+        model: "claude-haiku-4-5",
+      },
     });
     r.applyConfig(updatedConfig.claudeCode);
 
@@ -170,7 +174,7 @@ describe("runTurn stream-json parsing (SPEC §10.1)", () => {
 
     // session_started fires only on the first turn, with the `-1` suffix.
     const started = first.find((e) => e.event === "session_started");
-    expect(started?.payload?.["session_id"]).toBe("sess-xyz-1");
+    expect(started?.payload?.session_id).toBe("sess-xyz-1");
     expect(second.find((e) => e.event === "session_started")).toBeUndefined();
     expect(session.turnNumber).toBe(2);
   });

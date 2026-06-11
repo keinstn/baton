@@ -349,9 +349,9 @@ describe("issue state refresh (SPEC §11.1 op 3)", () => {
     ]);
     const issues = await c.fetchIssueStatesByIds(["I_1"]);
     expect(issues).toHaveLength(1);
-    expect(issues[0]!.state).toBe("In Progress");
-    expect(issues[0]!.itemId).toBe("PVTI_1");
-    expect(issues[0]!.labels).toEqual(["ai-ready"]);
+    expect(issues[0]?.state).toBe("In Progress");
+    expect(issues[0]?.itemId).toBe("PVTI_1");
+    expect(issues[0]?.labels).toEqual(["ai-ready"]);
     expect(sentQuery(fetchMock, 1)).toContain("$ids: [ID!]!");
   });
 
