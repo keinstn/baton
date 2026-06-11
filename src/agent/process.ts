@@ -96,7 +96,7 @@ export function runSubprocess(
 
     opts.logger?.debug("subprocess spawned", {
       pid: proc.pid,
-      command: opts.command.slice(0, 128),
+      executable: opts.command.split(" ")[0],
       workspace: session.workspace,
     });
 

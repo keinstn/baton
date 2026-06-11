@@ -481,7 +481,7 @@ export class Orchestrator {
       if (typeof sessionId === "string") entry.sessionId = sessionId;
       log.debug("agent event: session_started", { session_id: sessionId });
     } else if (event.event === "tool_use") {
-      log.info("agent tool use", { tool: event.message });
+      log.debug("agent tool use", { tool: event.message });
     } else if (event.event === "turn_completed") {
       entry.turnCount += 1;
       log.debug("agent event: turn_completed", { turn_count: entry.turnCount });

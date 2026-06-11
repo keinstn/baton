@@ -42,7 +42,7 @@ export async function renderPrompt(
   try {
     parsed = engine.parse(template);
   } catch (err) {
-    throw new BatonError("template_parse_error", String(err));
+    throw new BatonError("template_parse_error", String(err), { cause: err });
   }
   try {
     const rendered: string = await engine.render(parsed, {
@@ -51,7 +51,7 @@ export async function renderPrompt(
     });
     return rendered.trim();
   } catch (err) {
-    throw new BatonError("template_render_error", String(err));
+    throw new BatonError("template_render_error", String(err), { cause: err });
   }
 }
 
