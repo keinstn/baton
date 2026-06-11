@@ -86,7 +86,7 @@ describe("WorkflowReloader (SPEC §6.2)", () => {
     expect(reloader.promptTemplate()).toBe("good prompt");
     expect(reloader.config().agent.maxConcurrentAgents).toBe(3);
     expect(onApply).not.toHaveBeenCalled();
-    expect(lines.some((l) => l["level"] === "error")).toBe(true);
+    expect(lines.some((l) => l.level === "error")).toBe(true);
   });
 
   it("keeps last known good when config building throws", async () => {

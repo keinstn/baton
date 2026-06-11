@@ -18,13 +18,30 @@ export interface Workspace {
 }
 
 export class WorkspaceManager {
-  private readonly root: string;
+  private root: string;
 
   constructor(
-    private readonly config: BatonConfig,
+    private config: BatonConfig,
     private readonly logger: Logger,
   ) {
     this.root = path.resolve(config.workspace.root);
+  }
+
+  /**
+   * Apply a new config; hooks take effect on the next call. A changed
+   * workspace.root takes effect for new workspaces only — in-flight workspaces
+   * remain at the old root path (SPEC §6.2).
+   */
+  applyConfig(cfg: BatonConfig): void {
+    const newRoot = path.resolve(cfg.workspace.root);
+    if (newRoot !== this.root) {
+      this.logger.warn(
+        "workspace.root changed; takes effect for new workspaces only — in-flight workspaces remain at the old root path",
+        { old_root: this.root, new_root: newRoot },
+      );
+      this.root = newRoot;
+    }
+    this.config = cfg;
   }
 
   /** Compute the per-issue workspace path, enforcing root containment (SPEC §9.5 Invariant 2). */

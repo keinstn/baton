@@ -245,7 +245,7 @@ export class GitHubProjectsClient implements TrackerClient {
     const findField = (name: string) =>
       fields.find((f) => f?.name !== undefined && norm(f.name) === norm(name));
     const statusField = findField(this.cfg.statusField);
-    if (!statusField || !statusField.options?.length) {
+    if (!statusField?.options?.length) {
       throw new BatonError(
         "missing_status_field",
         `single-select field "${this.cfg.statusField}" not found on project`,
@@ -341,7 +341,7 @@ export class GitHubProjectsClient implements TrackerClient {
         projectId: meta.projectId,
         after,
       });
-      const items = (data["node"] as { items?: unknown } | null)?.items as
+      const items = (data.node as { items?: unknown } | null)?.items as
         | {
             pageInfo?: { hasNextPage?: boolean; endCursor?: string | null };
             nodes?: (ItemNode | null)[];
@@ -384,7 +384,7 @@ export class GitHubProjectsClient implements TrackerClient {
     if (issueIds.length === 0) return [];
     const meta = await this.resolveProject();
     const data = await this.gql(NODES_QUERY, { ids: issueIds });
-    const nodes = (data["nodes"] ?? []) as (
+    const nodes = (data.nodes ?? []) as (
       | (NonNullable<ItemNode["content"]> & {
           projectItems?: {
             nodes?: ({
@@ -398,7 +398,7 @@ export class GitHubProjectsClient implements TrackerClient {
     )[];
     const out: Issue[] = [];
     for (const node of nodes) {
-      if (!node || node.__typename !== "Issue") continue;
+      if (node?.__typename !== "Issue") continue;
       const item = (node.projectItems?.nodes ?? []).find(
         (it) => it?.project?.id === meta.projectId,
       );

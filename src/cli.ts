@@ -52,7 +52,11 @@ async function main(): Promise<void> {
     workflow.path,
     { config, promptTemplate: workflow.promptTemplate },
     logger,
-    (next) => tracker.applyConfig(next.tracker),
+    (next) => {
+      tracker.applyConfig(next.tracker);
+      runner.applyConfig(next.claudeCode);
+      workspaces.applyConfig(next);
+    },
   );
 
   const orchestrator = new Orchestrator({
@@ -128,6 +132,6 @@ async function main(): Promise<void> {
 
 main().catch((err: unknown) => {
   const msg = isBatonError(err) ? `${err.code}: ${err.message}` : String(err);
-  process.stderr.write(JSON.stringify({ level: "error", msg }) + "\n");
+  process.stderr.write(`${JSON.stringify({ level: "error", msg })}\n`);
   process.exit(1);
 });

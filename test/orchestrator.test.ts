@@ -439,12 +439,12 @@ describe("agent updates and token accounting (SPEC §13.5)", () => {
     await orchestrator.tick();
     expect(emit).not.toBeNull();
 
-    emit!({
+    emit?.({
       event: "session_started",
       timestamp: "t",
       payload: { session_id: "sess-1" },
     });
-    emit!({
+    emit?.({
       event: "turn_completed",
       timestamp: "t",
       usage: { inputTokens: 100, outputTokens: 40 },

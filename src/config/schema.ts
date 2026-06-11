@@ -159,35 +159,35 @@ export function buildConfig(
   env: Env = process.env,
 ): BatonConfig {
   const t = section(raw, "tracker");
-  const tokenRaw = str(t["token"]) ?? "$GITHUB_TOKEN";
-  const projectNumberRaw = t["project_number"];
+  const tokenRaw = str(t.token) ?? "$GITHUB_TOKEN";
+  const projectNumberRaw = t.project_number;
   const tracker: TrackerConfig = {
-    kind: str(t["kind"]),
-    endpoint: str(t["endpoint"]) ?? "https://api.github.com/graphql",
+    kind: str(t.kind),
+    endpoint: str(t.endpoint) ?? "https://api.github.com/graphql",
     token: resolveEnvValue(tokenRaw, env),
-    owner: str(t["owner"]),
-    ownerType: t["owner_type"] === "user" ? "user" : "organization",
+    owner: str(t.owner),
+    ownerType: t.owner_type === "user" ? "user" : "organization",
     projectNumber:
       typeof projectNumberRaw === "number" &&
       Number.isInteger(projectNumberRaw) &&
       projectNumberRaw > 0
         ? projectNumberRaw
         : null,
-    statusField: str(t["status_field"]) ?? "Status",
-    priorityField: str(t["priority_field"]),
-    repos: strList(t["repos"]),
-    requiredLabels: strList(t["required_labels"]) ?? [],
-    activeStates: strList(t["active_states"]) ?? ["Todo", "In Progress"],
-    terminalStates: strList(t["terminal_states"]) ?? ["Done"],
+    statusField: str(t.status_field) ?? "Status",
+    priorityField: str(t.priority_field),
+    repos: strList(t.repos),
+    requiredLabels: strList(t.required_labels) ?? [],
+    activeStates: strList(t.active_states) ?? ["Todo", "In Progress"],
+    terminalStates: strList(t.terminal_states) ?? ["Done"],
   };
 
   const p = section(raw, "polling");
   const polling = {
-    intervalMs: optPosInt(p["interval_ms"], "polling.interval_ms") ?? 30000,
+    intervalMs: optPosInt(p.interval_ms, "polling.interval_ms") ?? 30000,
   };
 
   const w = section(raw, "workspace");
-  const rootRaw = str(w["root"]);
+  const rootRaw = str(w.root);
   const workspace = {
     root: rootRaw
       ? expandPath(rootRaw, baseDir, env)
@@ -196,15 +196,15 @@ export function buildConfig(
 
   const h = section(raw, "hooks");
   const hooks: HooksConfig = {
-    afterCreate: str(h["after_create"]),
-    beforeRun: str(h["before_run"]),
-    afterRun: str(h["after_run"]),
-    beforeRemove: str(h["before_remove"]),
-    timeoutMs: optPosInt(h["timeout_ms"], "hooks.timeout_ms") ?? 60000,
+    afterCreate: str(h.after_create),
+    beforeRun: str(h.before_run),
+    afterRun: str(h.after_run),
+    beforeRemove: str(h.before_remove),
+    timeoutMs: optPosInt(h.timeout_ms, "hooks.timeout_ms") ?? 60000,
   };
 
   const a = section(raw, "agent");
-  const byStateRaw = a["max_concurrent_agents_by_state"];
+  const byStateRaw = a.max_concurrent_agents_by_state;
   const maxConcurrentAgentsByState: Record<string, number> = {};
   if (isMap(byStateRaw)) {
     // Invalid entries (non-positive or non-numeric) are ignored (SPEC §5.3.5).
@@ -215,45 +215,42 @@ export function buildConfig(
     }
   }
   const agent: AgentConfig = {
-    kind: str(a["kind"]),
+    kind: str(a.kind),
     maxConcurrentAgents:
-      optPosInt(a["max_concurrent_agents"], "agent.max_concurrent_agents") ??
-      10,
-    maxTurns: optPosInt(a["max_turns"], "agent.max_turns") ?? 20,
+      optPosInt(a.max_concurrent_agents, "agent.max_concurrent_agents") ?? 10,
+    maxTurns: optPosInt(a.max_turns, "agent.max_turns") ?? 20,
     maxRetryBackoffMs:
-      optPosInt(a["max_retry_backoff_ms"], "agent.max_retry_backoff_ms") ??
-      300000,
+      optPosInt(a.max_retry_backoff_ms, "agent.max_retry_backoff_ms") ?? 300000,
     maxConcurrentAgentsByState,
   };
 
   const cc = section(raw, "claude_code");
   const claudeCode: ClaudeCodeConfig = {
-    command: str(cc["command"]) ?? "claude",
-    model: str(cc["model"]),
-    permissionMode: str(cc["permission_mode"]) ?? "acceptEdits",
-    allowedTools: strList(cc["allowed_tools"]) ?? [],
-    disallowedTools: strList(cc["disallowed_tools"]) ?? [],
-    appendSystemPrompt: str(cc["append_system_prompt"]),
-    extraArgs: strList(cc["extra_args"]) ?? [],
+    command: str(cc.command) ?? "claude",
+    model: str(cc.model),
+    permissionMode: str(cc.permission_mode) ?? "acceptEdits",
+    allowedTools: strList(cc.allowed_tools) ?? [],
+    disallowedTools: strList(cc.disallowed_tools) ?? [],
+    appendSystemPrompt: str(cc.append_system_prompt),
+    extraArgs: strList(cc.extra_args) ?? [],
     turnTimeoutMs:
-      optPosInt(cc["turn_timeout_ms"], "claude_code.turn_timeout_ms") ??
-      3600000,
+      optPosInt(cc.turn_timeout_ms, "claude_code.turn_timeout_ms") ?? 3600000,
     stallTimeoutMs:
-      optInt(cc["stall_timeout_ms"], "claude_code.stall_timeout_ms") ?? 300000,
+      optInt(cc.stall_timeout_ms, "claude_code.stall_timeout_ms") ?? 300000,
   };
 
   const cp = section(raw, "copilot");
   const copilot: CopilotConfig = {
-    command: str(cp["command"]) ?? "copilot",
-    model: str(cp["model"]),
-    allowAllTools: cp["allow_all_tools"] === true,
-    allowTools: strList(cp["allow_tools"]) ?? [],
-    denyTools: strList(cp["deny_tools"]) ?? [],
-    extraArgs: strList(cp["extra_args"]) ?? [],
+    command: str(cp.command) ?? "copilot",
+    model: str(cp.model),
+    allowAllTools: cp.allow_all_tools === true,
+    allowTools: strList(cp.allow_tools) ?? [],
+    denyTools: strList(cp.deny_tools) ?? [],
+    extraArgs: strList(cp.extra_args) ?? [],
     turnTimeoutMs:
-      optPosInt(cp["turn_timeout_ms"], "copilot.turn_timeout_ms") ?? 3600000,
+      optPosInt(cp.turn_timeout_ms, "copilot.turn_timeout_ms") ?? 3600000,
     stallTimeoutMs:
-      optInt(cp["stall_timeout_ms"], "copilot.stall_timeout_ms") ?? 300000,
+      optInt(cp.stall_timeout_ms, "copilot.stall_timeout_ms") ?? 300000,
   };
 
   return { tracker, polling, workspace, hooks, agent, claudeCode, copilot };
