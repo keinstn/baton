@@ -100,7 +100,10 @@ export class GitHubProjectsClient implements TrackerClient {
         signal: AbortSignal.timeout(NETWORK_TIMEOUT_MS),
       });
     } catch (err) {
-      const cause = err instanceof Error && err.cause ? ` (cause: ${String(err.cause)})` : "";
+      const cause =
+        err instanceof Error && err.cause
+          ? ` (cause: ${String(err.cause)})`
+          : "";
       throw new BatonError("github_api_request", `${String(err)}${cause}`);
     }
     this.logger?.debug("github api response", {

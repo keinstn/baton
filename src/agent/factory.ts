@@ -16,7 +16,10 @@ export interface RunnerHandle {
  * keeps runner selection in one place and frees callers from `instanceof`
  * branching when hot-reloading config.
  */
-export function createRunner(config: BatonConfig, logger?: Logger): RunnerHandle {
+export function createRunner(
+  config: BatonConfig,
+  logger?: Logger,
+): RunnerHandle {
   if (config.agent.kind === "copilot") {
     const runner = new CopilotRunner(config.copilot, logger);
     return {

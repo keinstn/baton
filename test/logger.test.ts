@@ -42,7 +42,11 @@ describe("Logger", () => {
     log.info("i");
     log.warn("w");
     log.error("e");
-    expect(lines.map((l) => JSON.parse(l).level)).toEqual(["info", "warn", "error"]);
+    expect(lines.map((l) => JSON.parse(l).level)).toEqual([
+      "info",
+      "warn",
+      "error",
+    ]);
   });
 
   it("filters below minLevel=warn", () => {

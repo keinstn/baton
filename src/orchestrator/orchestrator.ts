@@ -283,8 +283,12 @@ export class Orchestrator {
       issues = await this.deps.tracker.fetchCandidateIssues();
     } catch (err) {
       // SPEC §11.4: candidate fetch failure → log and skip dispatch this tick.
-      const cause = err instanceof Error && err.cause ? String(err.cause) : undefined;
-      log.error("candidate fetch failed", { error: String(err), ...(cause && { cause }) });
+      const cause =
+        err instanceof Error && err.cause ? String(err.cause) : undefined;
+      log.error("candidate fetch failed", {
+        error: String(err),
+        ...(cause && { cause }),
+      });
       return;
     }
 
@@ -294,7 +298,9 @@ export class Orchestrator {
     let dispatched = 0;
     for (const issue of sortForDispatch(issues)) {
       if (this.availableSlots(config) <= 0) {
-        log.debug("no available slots; stopping dispatch", { remaining_candidates: issues.length - dispatched });
+        log.debug("no available slots; stopping dispatch", {
+          remaining_candidates: issues.length - dispatched,
+        });
         break;
       }
       if (
@@ -303,11 +309,17 @@ export class Orchestrator {
           claimed: this.claimed,
         })
       ) {
-        log.debug("issue skipped (ineligible)", { issue_identifier: issue.identifier, state: issue.state });
+        log.debug("issue skipped (ineligible)", {
+          issue_identifier: issue.identifier,
+          state: issue.state,
+        });
         continue;
       }
       if (!this.hasStateSlot(issue, config)) {
-        log.debug("issue skipped (state slot full)", { issue_identifier: issue.identifier, state: issue.state });
+        log.debug("issue skipped (state slot full)", {
+          issue_identifier: issue.identifier,
+          state: issue.state,
+        });
         continue;
       }
       this.dispatch(issue, null);
@@ -315,7 +327,9 @@ export class Orchestrator {
     }
 
     if (dispatched === 0 && this.running.size === 0) {
-      log.debug("tick complete: nothing to dispatch", { candidates: issues.length });
+      log.debug("tick complete: nothing to dispatch", {
+        candidates: issues.length,
+      });
     } else {
       log.debug("tick complete", { dispatched, running: this.running.size });
     }
@@ -471,7 +485,10 @@ export class Orchestrator {
     } else if (event.event === "turn_completed") {
       entry.turnCount += 1;
       log.debug("agent event: turn_completed", { turn_count: entry.turnCount });
-    } else if (event.event === "turn_failed" || event.event === "turn_cancelled") {
+    } else if (
+      event.event === "turn_failed" ||
+      event.event === "turn_cancelled"
+    ) {
       log.debug(`agent event: ${event.event}`, {
         message: event.message,
       });

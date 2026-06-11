@@ -137,7 +137,10 @@ export function runSubprocess(
       if (resolved) return;
       resolved = true;
       session.proc = null;
-      opts.logger?.debug("subprocess error", { pid: proc.pid, error: String(err) });
+      opts.logger?.debug("subprocess error", {
+        pid: proc.pid,
+        error: String(err),
+      });
       resolvePromise({ ok: false, error: `startup_failed: ${String(err)}` });
     });
     proc.on("close", (code) => {
@@ -149,7 +152,9 @@ export function runSubprocess(
         pid: proc.pid,
         exit_code: code,
         timed_out: timedOut,
-        ...(stderrTail.length > 0 ? { stderr_tail: stderrTail.slice(-200) } : {}),
+        ...(stderrTail.length > 0
+          ? { stderr_tail: stderrTail.slice(-200) }
+          : {}),
       });
       if (timedOut) {
         opts.onEvent({

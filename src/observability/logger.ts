@@ -11,7 +11,7 @@ const LEVEL_RANK: Record<LogLevel, number> = {
 };
 
 function resolveMinLevel(): LogLevel {
-  const env = (process.env["LOG_LEVEL"] ?? "").toLowerCase();
+  const env = (process.env.LOG_LEVEL ?? "").toLowerCase();
   if (env === "debug" || env === "info" || env === "warn" || env === "error") {
     return env;
   }
