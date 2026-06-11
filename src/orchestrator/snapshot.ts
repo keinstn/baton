@@ -10,7 +10,7 @@ import type {
 /** Read-only view of orchestrator state the snapshot is derived from. */
 export interface SnapshotState {
   running: ReadonlyMap<string, RunningEntry>;
-  retries: ReadonlyMap<string, RetryState>;
+  retries: Iterable<RetryState>;
   totals: AgentTotals;
 }
 
@@ -55,7 +55,7 @@ export function buildSnapshot(
   }
 
   const retrying: SnapshotRetrying[] = [];
-  for (const retry of state.retries.values()) {
+  for (const retry of state.retries) {
     retrying.push({
       identifier: retry.issue.identifier,
       issue_id: retry.issue.id,
