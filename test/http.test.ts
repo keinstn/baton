@@ -56,6 +56,7 @@ function makeSnapshot(
       total_tokens: 150,
       seconds_running: 12.5,
     },
+    rate_limits: null,
     ...over,
   };
 }
@@ -95,7 +96,7 @@ async function startTestServer(
 
 describe("startHttpServer (SPEC §13.7)", () => {
   describe("GET /api/v1/state", () => {
-    it("returns the full snapshot as JSON", async () => {
+    it("returns the full snapshot as JSON including rate_limits: null", async () => {
       const srv = await startTestServer();
       try {
         const res = await fetch(`${srv.baseUrl}/api/v1/state`);
@@ -106,6 +107,31 @@ describe("startHttpServer (SPEC §13.7)", () => {
         expect(body.running[0]?.identifier).toBe("repo-1");
         expect(body.retrying).toHaveLength(1);
         expect(body.agent_totals.total_tokens).toBe(150);
+        // SPEC §13.5: rate_limits must be present (not absent) even when null.
+        expect(Object.hasOwn(body, "rate_limits")).toBe(true);
+        expect(body.rate_limits).toBe(null);
+      } finally {
+        await srv.close();
+      }
+    });
+
+    it("HEAD /api/v1/state returns 200 with headers but no body", async () => {
+      const srv = await startTestServer();
+      try {
+        const getRes = await fetch(`${srv.baseUrl}/api/v1/state`);
+        const headRes = await fetch(`${srv.baseUrl}/api/v1/state`, {
+          method: "HEAD",
+        });
+        expect(headRes.status).toBe(200);
+        expect(headRes.headers.get("content-type")).toMatch(
+          /application\/json/,
+        );
+        // Content-Length on HEAD must match the GET body length.
+        expect(headRes.headers.get("content-length")).toBe(
+          getRes.headers.get("content-length"),
+        );
+        // HEAD responses must have no body.
+        expect(await headRes.text()).toBe("");
       } finally {
         await srv.close();
       }
@@ -250,6 +276,22 @@ describe("startHttpServer (SPEC §13.7)", () => {
         expect(html).toContain("repo-1");
         expect(html).toContain("Test issue");
         expect(html).toContain("repo-2");
+      } finally {
+        await srv.close();
+      }
+    });
+
+    it("HEAD / returns 200 with Content-Length matching GET body and no body", async () => {
+      const srv = await startTestServer();
+      try {
+        const getRes = await fetch(`${srv.baseUrl}/`);
+        const headRes = await fetch(`${srv.baseUrl}/`, { method: "HEAD" });
+        expect(headRes.status).toBe(200);
+        expect(headRes.headers.get("content-type")).toMatch(/text\/html/);
+        expect(headRes.headers.get("content-length")).toBe(
+          getRes.headers.get("content-length"),
+        );
+        expect(await headRes.text()).toBe("");
       } finally {
         await srv.close();
       }

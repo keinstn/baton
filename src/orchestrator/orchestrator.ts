@@ -79,6 +79,8 @@ export interface OrchestratorSnapshot {
     total_tokens: number;
     seconds_running: number;
   };
+  /** SPEC §13.5: null when the agent protocol does not expose rate-limit data. */
+  rate_limits: null;
 }
 
 export type RunWorker = (
@@ -656,6 +658,9 @@ export class Orchestrator {
         total_tokens: this.totals.totalTokens,
         seconds_running: this.totals.secondsRunning + liveElapsedSec,
       },
+      // SPEC §13.5: present but null when the agent protocol does not expose
+      // rate-limit counters (Claude Code SDK and Copilot CLI do not surface them).
+      rate_limits: null,
     };
   }
 

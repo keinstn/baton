@@ -71,6 +71,10 @@ export function startHttpServer(
 }
 
 function closeServer(server: Server): Promise<void> {
+  // Release idle keep-alive connections first so `server.close()` resolves
+  // promptly even when a browser tab or health-check tool is connected.
+  // `closeIdleConnections` is available on Node ≥18.2 (engines requires ≥20).
+  server.closeIdleConnections();
   return new Promise((resolve, reject) => {
     server.close((err) => (err ? reject(err) : resolve()));
   });
