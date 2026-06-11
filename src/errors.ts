@@ -25,3 +25,15 @@ export class BatonError extends Error {
 export function isBatonError(err: unknown, code?: string): err is BatonError {
   return err instanceof BatonError && (code === undefined || err.code === code);
 }
+
+/**
+ * Extract a string representation of `err.cause` for structured logging.
+ * Returns `undefined` when there is no cause, so callers can spread it
+ * conditionally: `{ error: String(err), ...errorCause(err) }`.
+ */
+export function errorCause(err: unknown): { cause: string } | undefined {
+  if (err instanceof Error && err.cause != null) {
+    return { cause: String(err.cause) };
+  }
+  return undefined;
+}

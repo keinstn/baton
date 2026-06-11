@@ -1,5 +1,5 @@
 import type { TrackerConfig } from "../config/schema.js";
-import { BatonError } from "../errors.js";
+import { BatonError, errorCause } from "../errors.js";
 import type { Logger } from "../observability/logger.js";
 import { isRecord, norm } from "../util.js";
 import { ITEMS_QUERY, NODES_QUERY, projectQuery } from "./queries.js";
@@ -100,11 +100,11 @@ export class GitHubProjectsClient implements TrackerClient {
         signal: AbortSignal.timeout(NETWORK_TIMEOUT_MS),
       });
     } catch (err) {
-      const cause =
-        err instanceof Error && err.cause
-          ? ` (cause: ${String(err.cause)})`
-          : "";
-      throw new BatonError("github_api_request", `${String(err)}${cause}`);
+      const cause = errorCause(err);
+      throw new BatonError(
+        "github_api_request",
+        cause ? `${String(err)} (cause: ${cause.cause})` : String(err),
+      );
     }
     this.logger?.debug("github api response", {
       status: res.status,

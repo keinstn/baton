@@ -1,4 +1,5 @@
 import type { BatonConfig } from "../config/schema.js";
+import { errorCause } from "../errors.js";
 import type { Logger } from "../observability/logger.js";
 import type { Issue } from "../tracker/types.js";
 
@@ -27,6 +28,7 @@ export async function startupTerminalCleanup(
   } catch (err) {
     deps.logger.error("startup cleanup fetch failed; continuing", {
       error: String(err),
+      ...errorCause(err),
     });
     return;
   }

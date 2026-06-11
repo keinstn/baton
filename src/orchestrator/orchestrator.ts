@@ -1,5 +1,6 @@
 import type { AgentEvent } from "../agent/runner.js";
 import type { BatonConfig, ValidationResult } from "../config/schema.js";
+import { errorCause } from "../errors.js";
 import type { Logger } from "../observability/logger.js";
 import type { Issue } from "../tracker/types.js";
 import { norm } from "../util.js";
@@ -283,11 +284,9 @@ export class Orchestrator {
       issues = await this.deps.tracker.fetchCandidateIssues();
     } catch (err) {
       // SPEC §11.4: candidate fetch failure → log and skip dispatch this tick.
-      const cause =
-        err instanceof Error && err.cause ? String(err.cause) : undefined;
       log.error("candidate fetch failed", {
         error: String(err),
-        ...(cause && { cause }),
+        ...errorCause(err),
       });
       return;
     }
@@ -383,6 +382,7 @@ export class Orchestrator {
       // SPEC §8.5: refresh failure keeps workers running; retry next tick.
       log.error("reconciliation refresh failed; keeping workers", {
         error: String(err),
+        ...errorCause(err),
       });
       return;
     }
@@ -559,6 +559,7 @@ export class Orchestrator {
     const nextAttempt = (entry?.failureAttempt ?? 0) + 1;
     log.error("worker failed", {
       error: String(err),
+      ...errorCause(err),
       ...(reason ? { reason } : {}),
       attempt: nextAttempt,
     });
@@ -610,6 +611,7 @@ export class Orchestrator {
       // Treat a fetch failure like slot exhaustion: requeue and try later.
       log.error("retry state fetch failed; requeuing", {
         error: String(err),
+        ...errorCause(err),
       });
       this.requeue(retry);
       return;

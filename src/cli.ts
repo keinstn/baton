@@ -4,7 +4,7 @@ import path from "node:path";
 import { createRunner } from "./agent/factory.js";
 import { parseArgs } from "./cli-args.js";
 import { buildConfig, validateDispatchConfig } from "./config/schema.js";
-import { isBatonError } from "./errors.js";
+import { errorCause, isBatonError } from "./errors.js";
 import { startHttpServer } from "./observability/http.js";
 import { Logger } from "./observability/logger.js";
 import { Orchestrator } from "./orchestrator/orchestrator.js";
@@ -88,7 +88,10 @@ async function main(): Promise<void> {
       try {
         await orchestrator.tick();
       } catch (err) {
-        logger.error("refresh tick failed", { error: String(err) });
+        logger.error("refresh tick failed", {
+          error: String(err),
+          ...errorCause(err),
+        });
       } finally {
         refreshPending = false;
       }
@@ -148,7 +151,10 @@ async function main(): Promise<void> {
     }, 100);
   });
   watcher.on("error", (err) => {
-    logger.error("workflow watch error", { error: String(err) });
+    logger.error("workflow watch error", {
+      error: String(err),
+      ...errorCause(err),
+    });
   });
 
   const shutdown = (signal: string) => {
