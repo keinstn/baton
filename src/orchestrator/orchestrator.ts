@@ -465,9 +465,9 @@ export class Orchestrator {
   }
 
   /**
-   * Retry timer fired (SPEC §8.4/§16.6): fetch active candidates, release the
-   * claim if the issue disappeared or went inactive, requeue on slot exhaustion,
-   * otherwise re-dispatch carrying the failure-attempt count.
+   * Retry timer fired (SPEC §8.4/§16.6): check the issue's current state,
+   * release the claim if it disappeared or went inactive, requeue on slot
+   * exhaustion, otherwise re-dispatch carrying the failure-attempt count.
    */
   async onRetryTimer(issueId: string): Promise<void> {
     const retry = this.retries.get(issueId);
@@ -478,12 +478,12 @@ export class Orchestrator {
       issue_identifier: retry.issue.identifier,
     });
 
-    let candidates: Issue[];
+    let states: Issue[];
     try {
-      candidates = await this.deps.tracker.fetchCandidateIssues();
+      states = await this.deps.tracker.fetchIssueStatesByIds([issueId]);
     } catch (err) {
       // Treat a fetch failure like slot exhaustion: requeue and try later.
-      log.error("retry candidate fetch failed; requeuing", {
+      log.error("retry state fetch failed; requeuing", {
         error: String(err),
       });
       this.requeue(retry);
@@ -491,7 +491,7 @@ export class Orchestrator {
     }
 
     const config = this.deps.config();
-    const found = candidates.find((i) => i.id === issueId);
+    const found = states[0];
     if (!found || !isIssueActive(found, config)) {
       this.claimed.delete(issueId);
       log.info("retry: issue no longer active; releasing claim");
@@ -510,11 +510,20 @@ export class Orchestrator {
 
   /** Re-arm a retry that could not run yet (slot exhaustion / fetch failure). */
   private requeue(retry: RetryState): void {
+    // Preserve the exponential backoff for failure retries; continuation
+    // retries (failureAttempt === 0) still use the short fixed delay.
+    const delayMs =
+      retry.failureAttempt > 0
+        ? failureBackoffMs(
+            retry.failureAttempt,
+            this.deps.config().agent.maxRetryBackoffMs,
+          )
+        : CONTINUATION_DELAY_MS;
     this.armRetry(
       retry.issue,
       retry.promptAttempt,
       retry.failureAttempt,
-      CONTINUATION_DELAY_MS,
+      delayMs,
     );
   }
 

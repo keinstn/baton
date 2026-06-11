@@ -55,7 +55,13 @@ function makeOrchestrator(
   const config = overrides.config?.() ?? makeConfig();
   const fetchCandidateIssues =
     typeof issues === "function" ? vi.fn(issues) : vi.fn(async () => issues);
-  const fetchIssueStatesByIds = vi.fn(async () => [] as Issue[]);
+  // For static lists, fetchIssueStatesByIds returns matching issues so retry
+  // timers can re-dispatch without additional test setup. Dynamic callers that
+  // need custom behaviour should supply tracker in overrides.
+  const issueList = typeof issues === "function" ? null : issues;
+  const fetchIssueStatesByIds = vi.fn(async (ids: string[]) =>
+    (issueList ?? []).filter((i) => ids.includes(i.id)),
+  );
   const clock = manualScheduler();
   const deps: OrchestratorDeps = {
     tracker: { fetchCandidateIssues, fetchIssueStatesByIds },
@@ -348,13 +354,12 @@ describe("tick dispatch (SPEC §8.1, §8.3)", () => {
     expect(clock.delays()).toEqual([20000]);
   });
 
-  it("requeues a retry when no slots are available", async () => {
+  it("requeues a continuation retry with the short delay when no slots are available", async () => {
     const issue = makeIssue();
     const config = makeConfig({ agent: { max_concurrent_agents: 1 } });
     // A long-running blocker occupies the only slot.
     const blocker = makeIssue({ id: "I_block", identifier: "repo-9" });
-    let candidates: Issue[] = [issue];
-    const { orchestrator, clock } = makeOrchestrator(async () => candidates, {
+    const { orchestrator, clock } = makeOrchestrator([issue], {
       config: () => config,
       runWorker: vi.fn((iss: Issue) =>
         iss.id === "I_block" ? new Promise<void>(() => {}) : Promise.resolve(),
@@ -364,13 +369,35 @@ describe("tick dispatch (SPEC §8.1, §8.3)", () => {
     await settle();
 
     // Occupy the slot, then fire the continuation retry: no slot → requeue.
-    candidates = [issue, blocker];
     orchestrator.dispatch(blocker, null);
     expect(orchestrator.availableSlots(config)).toBe(0);
     await clock.fireAll();
     expect(orchestrator.claimed.has(issue.id)).toBe(true);
-    // A fresh retry was armed with the continuation delay.
+    // Continuation retry requeue uses the short fixed delay (failureAttempt=0).
     expect(clock.delays()).toContain(1000);
+  });
+
+  it("preserves the backoff delay when a failure retry is requeued due to slot exhaustion", async () => {
+    const issue = makeIssue();
+    const config = makeConfig({ agent: { max_concurrent_agents: 1 } });
+    const blocker = makeIssue({ id: "I_block", identifier: "repo-9" });
+    const { orchestrator, clock } = makeOrchestrator([issue], {
+      config: () => config,
+      runWorker: vi.fn(async (iss: Issue) => {
+        if (iss.id !== "I_block") throw new Error("boom");
+        return new Promise<void>(() => {});
+      }),
+    });
+    await orchestrator.tick(); // dispatch issue (fails → 10s backoff retry)
+    await settle();
+    expect(clock.delays()).toEqual([10000]);
+
+    // Occupy the slot before the backoff retry fires.
+    orchestrator.dispatch(blocker, null);
+    expect(orchestrator.availableSlots(config)).toBe(0);
+    await clock.fireAll(); // no slot → requeue; must preserve 10s, not drop to 1s
+    expect(orchestrator.claimed.has(issue.id)).toBe(true);
+    expect(clock.delays()).toContain(10000);
   });
 
   it("skips the tick on candidate fetch failure without crashing (SPEC §11.4)", async () => {

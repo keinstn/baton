@@ -99,7 +99,15 @@ export function createWorker(deps: WorkerDeps): RunWorker {
             `continuation state refresh failed: ${String(err)}`,
           );
         }
-        current = refreshed[0] ?? current;
+        const latest = refreshed[0];
+        if (!latest) {
+          // Tracker returned no entry: issue was deleted or is gone.
+          log.info("issue not found in tracker refresh; ending session", {
+            turns: turn,
+          });
+          break;
+        }
+        current = latest;
         if (!isIssueActive(current, config)) {
           log.info("issue left active set; ending session", {
             state: current.state,
@@ -111,8 +119,11 @@ export function createWorker(deps: WorkerDeps): RunWorker {
       }
     } finally {
       signal?.removeEventListener("abort", onAbort);
-      await deps.runner.stopSession(session);
-      await deps.workspaces.runAfterRun(issue, workspace.path);
+      try {
+        await deps.runner.stopSession(session);
+      } finally {
+        await deps.workspaces.runAfterRun(issue, workspace.path);
+      }
     }
   };
 }

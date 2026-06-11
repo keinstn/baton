@@ -138,6 +138,28 @@ describe("worker attempt (SPEC §16)", () => {
     expect(tracker.calls.length).toBe(1);
   });
 
+  it("stops continuing when the tracker returns empty for the running issue", async () => {
+    const root = await mkdtemp(join(tmpdir(), "baton-worker-"));
+    const config = makeConfig({ workspace: { root }, agent: { max_turns: 5 } });
+    const workspaces = new WorkspaceManager(config, silentLogger);
+    const runner = new FakeRunner([{ ok: true }]);
+    const runWorker = createWorker({
+      workspaces,
+      runner,
+      tracker: {
+        async fetchIssueStatesByIds(): Promise<Issue[]> {
+          return []; // issue disappeared from tracker
+        },
+      },
+      config: () => config,
+      promptTemplate: () => "do {{ issue.identifier }}",
+      logger: silentLogger,
+    });
+    await runWorker(makeIssue(), null, () => {});
+    // Only one turn runs; the empty refresh breaks the loop.
+    expect(runner.calls).toEqual(["start", "turn", "stop"]);
+  });
+
   it("fails the attempt when the turn fails, still stopping the session and running after_run", async () => {
     const { runner, runWorker } = await setup({
       results: [{ ok: false, error: "boom" }],
