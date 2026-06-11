@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 import { watch } from "node:fs";
 import path from "node:path";
-import { ClaudeCodeRunner } from "./agent/claude-code.js";
-import { CopilotRunner } from "./agent/copilot.js";
-import type { AgentRunner } from "./agent/runner.js";
+import { createRunner } from "./agent/factory.js";
+import { parseArgs } from "./cli-args.js";
 import { buildConfig, validateDispatchConfig } from "./config/schema.js";
 import { isBatonError } from "./errors.js";
 import { startHttpServer } from "./observability/http.js";
@@ -15,46 +14,6 @@ import { GitHubProjectsClient } from "./tracker/github-projects.js";
 import { loadWorkflow } from "./workflow/loader.js";
 import { WorkflowReloader } from "./workflow/reloader.js";
 import { WorkspaceManager } from "./workspace/manager.js";
-
-interface CliArgs {
-  workflowPath: string;
-  /** When set, overrides `server.port` from front matter (SPEC §13.7). */
-  port: number | null;
-}
-
-/**
- * Minimal argv parsing for `baton [WORKFLOW.md] [--port N]` (SPEC §17.7/§13.7).
- * Accepts `--port 8080`, `--port=8080`, or `-p 8080`. CLI takes precedence over
- * the workflow's `server.port` front matter key.
- */
-export function parseArgs(argv: string[]): CliArgs {
-  let workflowPath: string | null = null;
-  let port: number | null = null;
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i] as string;
-    if (a === "--port" || a === "-p") {
-      const next = argv[i + 1];
-      if (!next) throw new Error(`${a} requires an integer argument`);
-      port = parsePort(next);
-      i += 1;
-    } else if (a.startsWith("--port=")) {
-      port = parsePort(a.slice("--port=".length));
-    } else if (!workflowPath) {
-      workflowPath = a;
-    } else {
-      throw new Error(`unexpected argument: ${a}`);
-    }
-  }
-  return { workflowPath: workflowPath ?? "./WORKFLOW.md", port };
-}
-
-function parsePort(s: string): number {
-  const n = Number(s);
-  if (!Number.isInteger(n) || n < 1 || n > 65535) {
-    throw new Error(`invalid --port value: ${s}`);
-  }
-  return n;
-}
 
 async function main(): Promise<void> {
   const logger = new Logger({ service: "baton" });
@@ -86,10 +45,7 @@ async function main(): Promise<void> {
 
   const tracker = new GitHubProjectsClient(config.tracker, fetch, logger);
   const workspaces = new WorkspaceManager(config, logger);
-  const runner: AgentRunner =
-    config.agent.kind === "copilot"
-      ? new CopilotRunner(config.copilot, logger)
-      : new ClaudeCodeRunner(config.claudeCode, logger);
+  const { runner, applyReloadedConfig } = createRunner(config);
 
   // SPEC §6.2: hot-reload WORKFLOW.md, keeping the last known good config on
   // failure. The orchestrator/worker read config + prompt through these getters,
@@ -100,11 +56,7 @@ async function main(): Promise<void> {
     logger,
     (next) => {
       tracker.applyConfig(next.tracker);
-      if (runner instanceof CopilotRunner) {
-        runner.applyConfig(next.copilot);
-      } else if (runner instanceof ClaudeCodeRunner) {
-        runner.applyConfig(next.claudeCode);
-      }
+      applyReloadedConfig(next);
       workspaces.applyConfig(next);
     },
   );

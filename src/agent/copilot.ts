@@ -1,11 +1,13 @@
-import { type ChildProcess, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { stat } from "node:fs/promises";
-import { createInterface } from "node:readline";
 import type { CopilotConfig } from "../config/schema.js";
-import { BatonError } from "../errors.js";
-import type { Logger } from "../observability/logger.js";
-import { shellQuote } from "./claude-code.js";
+import { DISPLAY_TEXT_MAX_BYTES } from "../constants.js";
+import { now } from "../util.js";
+import {
+  ensureWorkspaceDir,
+  runSubprocess,
+  shellQuote,
+  stopSessionProcess,
+} from "./process.js";
 import type {
   AgentEvent,
   AgentEventCallback,
@@ -13,10 +15,6 @@ import type {
   AgentSession,
   TurnResult,
 } from "./runner.js";
-
-function now(): string {
-  return new Date().toISOString();
-}
 
 /**
  * Default upper bound on prompt argv bytes. The GitHub Copilot CLI accepts
@@ -42,10 +40,7 @@ const DEFAULT_PROMPT_MAX_BYTES = 128 * 1024;
  * counts, and SPEC §10.2 forbids fabricating those.
  */
 export class CopilotRunner implements AgentRunner {
-  constructor(
-    private cfg: CopilotConfig,
-    private readonly _logger: Logger,
-  ) {}
+  constructor(private cfg: CopilotConfig) {}
 
   /** Apply a new config; takes effect on the next turn dispatch (SPEC §6.2). */
   applyConfig(cfg: CopilotConfig): void {
@@ -90,19 +85,7 @@ export class CopilotRunner implements AgentRunner {
   }
 
   async startSession(workspace: string): Promise<AgentSession> {
-    // SPEC §9.5 Invariant 1: validate cwd before launching the agent.
-    let isDir = false;
-    try {
-      isDir = (await stat(workspace)).isDirectory();
-    } catch {
-      isDir = false;
-    }
-    if (!isDir) {
-      throw new BatonError(
-        "invalid_workspace_cwd",
-        `not a directory: ${workspace}`,
-      );
-    }
+    await ensureWorkspaceDir(workspace);
     return { workspace, agentSessionId: null, proc: null, turnNumber: 0 };
   }
 
@@ -161,36 +144,14 @@ export class CopilotRunner implements AgentRunner {
      *  emitted regardless of `session.turnNumber`. */
     isNewSession = false,
   ): Promise<TurnResult> {
-    return new Promise((resolvePromise) => {
-      const cmdline = this.buildCommand(prompt, sessionId, resume);
-      // detached: own process group, so timeout/stop kills the whole agent
-      // process tree (not just the bash -lc wrapper).
-      const proc = spawn("bash", ["-lc", cmdline], {
-        cwd: session.workspace,
-        stdio: ["ignore", "pipe", "pipe"],
-        detached: true,
-      });
-      session.proc = proc;
-
-      let stderrTail = "";
-      proc.stderr.on("data", (chunk: Buffer) => {
-        stderrTail = (stderrTail + chunk.toString("utf8")).slice(-2000);
-      });
-
-      let result: TurnResult | null = null;
-      let sessionStartedEmitted = false;
-      let timedOut = false;
-      // Guard against Node.js firing both `error` and `close` on spawn
-      // failure (ENOENT etc.). The first handler to resolve wins; the second
-      // must not call onEvent again (callbacks are not idempotent).
-      let resolved = false;
-      const timer = setTimeout(() => {
-        timedOut = true;
-        killProcessTree(proc);
-      }, this.cfg.turnTimeoutMs);
-
-      const rl = createInterface({ input: proc.stdout });
-      rl.on("line", (line) => {
+    const cmdline = this.buildCommand(prompt, sessionId, resume);
+    // The Copilot CLI takes prompts via argv (no stdin), so stdio in is ignored.
+    let sessionStartedEmitted = false;
+    return runSubprocess(session, {
+      command: cmdline,
+      timeoutMs: this.cfg.turnTimeoutMs,
+      onEvent,
+      onLine: (line) => {
         const r = this.handleLine(
           session,
           line,
@@ -199,34 +160,8 @@ export class CopilotRunner implements AgentRunner {
           onEvent,
         );
         if (r.sessionStarted) sessionStartedEmitted = true;
-        if (r.result) result = r.result;
-      });
-
-      proc.on("error", (err) => {
-        clearTimeout(timer);
-        resolved = true;
-        resolvePromise({ ok: false, error: `startup_failed: ${String(err)}` });
-      });
-      proc.on("close", (code) => {
-        clearTimeout(timer);
-        if (resolved) return;
-        resolved = true;
-        session.proc = null;
-        if (timedOut) {
-          onEvent({
-            event: "turn_cancelled",
-            timestamp: now(),
-            message: "turn_timeout",
-          });
-          resolvePromise({ ok: false, error: "turn_timeout" });
-        } else if (result) {
-          resolvePromise(result);
-        } else {
-          const error = `process_exit code=${code} stderr=${stderrTail.slice(-500)}`;
-          onEvent({ event: "turn_failed", timestamp: now(), message: error });
-          resolvePromise(code === 0 ? { ok: true } : { ok: false, error });
-        }
-      });
+        return r.result;
+      },
     });
   }
 
@@ -250,7 +185,7 @@ export class CopilotRunner implements AgentRunner {
       onEvent({
         event: "malformed",
         timestamp: now(),
-        message: trimmed.slice(0, 200),
+        message: trimmed.slice(0, DISPLAY_TEXT_MAX_BYTES),
       });
       return { result: null, sessionStarted: false };
     }
@@ -304,7 +239,7 @@ export class CopilotRunner implements AgentRunner {
           onEvent({
             event: "notification",
             timestamp: now(),
-            message: content.slice(0, 200),
+            message: content.slice(0, DISPLAY_TEXT_MAX_BYTES),
           });
         }
         return { result: null, sessionStarted: didEmitSessionStart };
@@ -341,28 +276,8 @@ export class CopilotRunner implements AgentRunner {
   }
 
   async stopSession(session: AgentSession): Promise<void> {
-    if (
-      session.proc &&
-      session.proc.exitCode === null &&
-      !session.proc.killed
-    ) {
-      killProcessTree(session.proc);
-    }
-    session.proc = null;
+    stopSessionProcess(session);
   }
-}
-
-/** Kill the agent's whole process group (requires spawn with detached: true). */
-function killProcessTree(proc: ChildProcess): void {
-  if (proc.pid !== undefined) {
-    try {
-      process.kill(-proc.pid, "SIGKILL");
-      return;
-    } catch {
-      // Fall through to single-process kill.
-    }
-  }
-  proc.kill("SIGKILL");
 }
 
 // Suppress unused-symbol warning for AgentEvent (re-exported for adapter authors).

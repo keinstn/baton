@@ -1,11 +1,11 @@
 import type { TrackerConfig } from "../config/schema.js";
 import { BatonError } from "../errors.js";
 import type { Logger } from "../observability/logger.js";
-import { norm } from "../util.js";
+import { isRecord, norm } from "../util.js";
+import { ITEMS_QUERY, NODES_QUERY, projectQuery } from "./queries.js";
 import type { Issue, TrackerClient } from "./types.js";
 
 const NETWORK_TIMEOUT_MS = 30000;
-const PAGE_SIZE = 50;
 
 export interface ProjectMeta {
   projectId: string;
@@ -36,89 +36,6 @@ interface ItemNode {
     labels?: { nodes?: ({ name?: string } | null)[] };
     repository?: { name?: string; nameWithOwner?: string };
   };
-}
-
-const FIELD_VALUES_FRAGMENT = `
-  fieldValues(first: 30) {
-    nodes {
-      ... on ProjectV2ItemFieldSingleSelectValue {
-        name
-        field { ... on ProjectV2SingleSelectField { name } }
-      }
-    }
-  }`;
-
-const ISSUE_CONTENT_FRAGMENT = `
-  __typename
-  ... on Issue {
-    id
-    number
-    title
-    body
-    url
-    state
-    createdAt
-    updatedAt
-    labels(first: 20) { nodes { name } }
-    repository { name nameWithOwner }
-  }`;
-
-const ITEMS_QUERY = `
-query BatonItems($projectId: ID!, $after: String) {
-  node(id: $projectId) {
-    ... on ProjectV2 {
-      items(first: ${PAGE_SIZE}, after: $after) {
-        pageInfo { hasNextPage endCursor }
-        nodes {
-          id
-          ${FIELD_VALUES_FRAGMENT}
-          content { ${ISSUE_CONTENT_FRAGMENT} }
-        }
-      }
-    }
-  }
-}`;
-
-const NODES_QUERY = `
-query BatonIssueStates($ids: [ID!]!) {
-  nodes(ids: $ids) {
-    __typename
-    ... on Issue {
-      id
-      number
-      title
-      body
-      url
-      state
-      createdAt
-      updatedAt
-      labels(first: 20) { nodes { name } }
-      repository { name nameWithOwner }
-      projectItems(first: 10) {
-        nodes {
-          id
-          project { id }
-          ${FIELD_VALUES_FRAGMENT}
-        }
-      }
-    }
-  }
-}`;
-
-function projectQuery(ownerField: "organization" | "user"): string {
-  return `
-query BatonProject($owner: String!, $number: Int!) {
-  ${ownerField}(login: $owner) {
-    projectV2(number: $number) {
-      id
-      fields(first: 50) {
-        nodes {
-          ... on ProjectV2SingleSelectField { name options { name } }
-        }
-      }
-    }
-  }
-}`;
 }
 
 function readFieldValue(
@@ -197,20 +114,25 @@ export class GitHubProjectsClient implements TrackerClient {
         `invalid JSON response: ${String(err)}`,
       );
     }
-    const obj = body as { data?: unknown; errors?: unknown[] };
-    if (Array.isArray(obj.errors) && obj.errors.length > 0) {
+    if (!isRecord(body)) {
       throw new BatonError(
-        "github_graphql_errors",
-        JSON.stringify(obj.errors).slice(0, 1000),
+        "github_unknown_payload",
+        "GraphQL response is not an object",
       );
     }
-    if (typeof obj.data !== "object" || obj.data === null) {
+    if (Array.isArray(body.errors) && body.errors.length > 0) {
+      throw new BatonError(
+        "github_graphql_errors",
+        JSON.stringify(body.errors).slice(0, 1000),
+      );
+    }
+    if (!isRecord(body.data)) {
       throw new BatonError(
         "github_unknown_payload",
         "GraphQL response has no data",
       );
     }
-    return obj.data as Record<string, unknown>;
+    return body.data;
   }
 
   /** Resolve and cache the project node ID and single-select field options (SPEC §11.2). */

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ClaudeCodeRunner, shellQuote } from "../src/agent/claude-code.js";
 import type { AgentEvent } from "../src/agent/runner.js";
-import { makeConfig, silentLogger } from "./helpers.js";
+import { makeConfig } from "./helpers.js";
 
 async function fakeClaude(
   script: string,
@@ -20,7 +20,7 @@ async function fakeClaude(
 
 function runner(command: string, overrides: Record<string, unknown> = {}) {
   const config = makeConfig({ claude_code: { command, ...overrides } });
-  return new ClaudeCodeRunner(config.claudeCode, silentLogger);
+  return new ClaudeCodeRunner(config.claudeCode);
 }
 
 const SUCCESS_SCRIPT = `
@@ -110,8 +110,8 @@ describe("runTurn stream-json parsing (SPEC §10.1)", () => {
     expect(kinds).toContain("tool_use");
     expect(kinds).toContain("malformed");
     expect(kinds).toContain("turn_completed");
-    const completed = events.find((e) => e.event === "turn_completed")!;
-    expect(completed.usage).toEqual({ inputTokens: 10, outputTokens: 5 });
+    const completed = events.find((e) => e.event === "turn_completed");
+    expect(completed?.usage).toEqual({ inputTokens: 10, outputTokens: 5 });
   });
 
   it("maps an error result to a failed turn", async () => {

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CopilotRunner } from "../src/agent/copilot.js";
 import type { AgentEvent } from "../src/agent/runner.js";
-import { makeConfig, silentLogger } from "./helpers.js";
+import { makeConfig } from "./helpers.js";
 
 async function fakeCopilot(
   script: string,
@@ -23,7 +23,7 @@ function runner(command: string, overrides: Record<string, unknown> = {}) {
     agent: { kind: "copilot" },
     copilot: { command, ...overrides },
   });
-  return new CopilotRunner(config.copilot, silentLogger);
+  return new CopilotRunner(config.copilot);
 }
 
 const SUCCESS_SCRIPT = `
@@ -135,12 +135,12 @@ describe("CopilotRunner.runTurn JSONL parsing (SPEC §10.2)", () => {
     expect(kinds).toContain("turn_completed");
 
     // SPEC §10.2: token counts are zero (CLI does not expose them).
-    const completed = events.find((e) => e.event === "turn_completed")!;
-    expect(completed.usage).toEqual({ inputTokens: 0, outputTokens: 0 });
+    const completed = events.find((e) => e.event === "turn_completed");
+    expect(completed?.usage).toEqual({ inputTokens: 0, outputTokens: 0 });
 
     // session_started carries the composite id `<uuid>-1`.
-    const started = events.find((e) => e.event === "session_started")!;
-    expect(started.payload?.session_id).toBe(`${session.agentSessionId}-1`);
+    const started = events.find((e) => e.event === "session_started");
+    expect(started?.payload?.session_id).toBe(`${session.agentSessionId}-1`);
   });
 
   it("maps a non-zero exitCode in result to a failed turn", async () => {
@@ -205,7 +205,8 @@ describe("CopilotRunner.runTurn JSONL parsing (SPEC §10.2)", () => {
     const session = await r.startSession(workspace);
     const first: AgentEvent[] = [];
     await r.runTurn(session, "first", (e) => first.push(e));
-    const uuid = session.agentSessionId!;
+    const uuid = session.agentSessionId;
+    expect(uuid).not.toBeNull();
     const second: AgentEvent[] = [];
     await r.runTurn(session, "second", (e) => second.push(e));
 
@@ -248,7 +249,8 @@ exit 0
     const r = runner(command);
     const session = await r.startSession(workspace);
     await r.runTurn(session, "first", () => {});
-    const firstUuid = session.agentSessionId!;
+    const firstUuid = session.agentSessionId;
+    expect(firstUuid).not.toBeNull();
     const events: AgentEvent[] = [];
     const result = await r.runTurn(session, "second", (e) => events.push(e));
 

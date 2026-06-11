@@ -4,6 +4,8 @@ import type { Logger } from "../observability/logger.js";
 import type { Issue } from "../tracker/types.js";
 import { norm } from "../util.js";
 import { CONTINUATION_DELAY_MS, failureBackoffMs } from "./retry.js";
+import { RetryManager } from "./retry-manager.js";
+import { buildSnapshot } from "./snapshot.js";
 
 /** Why the orchestrator intentionally stopped a running worker (SPEC §8.5). */
 export type StopReason = "stall" | "reconcile_terminal" | "reconcile_inactive";
@@ -103,7 +105,7 @@ const defaultScheduler: Scheduler = (fn, delayMs) => {
   return { cancel: () => clearTimeout(t) };
 };
 
-interface RetryState {
+export interface RetryState {
   issue: Issue;
   /** Prompt attempt passed to the worker when this retry re-dispatches. */
   promptAttempt: number | null;
@@ -222,7 +224,7 @@ export class Orchestrator {
   readonly running = new Map<string, RunningEntry>();
   readonly claimed = new Set<string>();
   readonly completed = new Set<string>();
-  readonly retries = new Map<string, RetryState>();
+  readonly retries: RetryManager;
   readonly totals: AgentTotals = {
     inputTokens: 0,
     outputTokens: 0,
@@ -237,6 +239,11 @@ export class Orchestrator {
   constructor(private readonly deps: OrchestratorDeps) {
     this.now = deps.now ?? Date.now;
     this.scheduler = deps.scheduler ?? defaultScheduler;
+    this.retries = new RetryManager({
+      scheduler: this.scheduler,
+      now: this.now,
+      logger: deps.logger,
+    });
   }
 
   async tick(): Promise<void> {
@@ -292,33 +299,41 @@ export class Orchestrator {
   }
 
   /**
-   * Active-run reconciliation (SPEC §8.5). Part A: kill workers stalled past the
-   * runner's `stall_timeout_ms`. Part B: refresh tracker state for running issues
-   * — terminal/closed ⇒ stop (and clean workspace); no longer active ⇒ stop;
-   * still active ⇒ update snapshot; refresh failure ⇒ keep workers, retry later.
+   * Active-run reconciliation (SPEC §8.5): kill stalled workers, then refresh
+   * tracker state for the survivors and stop those that went terminal/inactive.
    */
   async reconcile(): Promise<void> {
     const config = this.deps.config();
-    const log = this.deps.logger;
+    this.detectStalls(config);
+    await this.refreshRunningStates(config);
+  }
 
-    // Part A — stall detection.
+  /** Reconcile Part A: cancel workers idle past the runner's stall timeout. */
+  private detectStalls(config: BatonConfig): void {
     const stallMs = stallTimeoutMsFor(config);
-    if (stallMs > 0) {
-      for (const [id, entry] of this.running) {
-        if (entry.stopReason) continue;
-        const last = entry.lastEventAtMs ?? entry.startedAtMs;
-        if (this.now() - last > stallMs) {
-          log.warn("run stalled; cancelling", {
-            issue_id: id,
-            issue_identifier: entry.identifier,
-            elapsed_ms: this.now() - last,
-          });
-          this.stopRunning(entry, "stall");
-        }
+    if (stallMs <= 0) return;
+    const log = this.deps.logger;
+    for (const [id, entry] of this.running) {
+      if (entry.stopReason) continue;
+      const last = entry.lastEventAtMs ?? entry.startedAtMs;
+      if (this.now() - last > stallMs) {
+        log.warn("run stalled; cancelling", {
+          issue_id: id,
+          issue_identifier: entry.identifier,
+          elapsed_ms: this.now() - last,
+        });
+        this.stopRunning(entry, "stall");
       }
     }
+  }
 
-    // Part B — tracker state refresh.
+  /**
+   * Reconcile Part B: refresh tracker state for running issues — terminal/closed
+   * ⇒ stop (and clean workspace); no longer active ⇒ stop; still active ⇒ update
+   * snapshot; refresh failure ⇒ keep workers, retry next tick.
+   */
+  private async refreshRunningStates(config: BatonConfig): Promise<void> {
+    const log = this.deps.logger;
     const ids = [...this.running.entries()]
       .filter(([, e]) => !e.stopReason)
       .map(([id]) => id);
@@ -509,23 +524,10 @@ export class Orchestrator {
     failureAttempt: number,
     delayMs: number,
   ): void {
-    this.retries.get(issue.id)?.task.cancel();
     this.claimed.add(issue.id); // stay claimed so the tick won't double-dispatch
-    const task = this.scheduler(() => this.onRetryTimer(issue.id), delayMs);
-    this.retries.set(issue.id, {
-      issue,
-      promptAttempt,
-      failureAttempt,
-      task,
-      scheduledAtMs: this.now(),
-      delayMs,
-    });
-    this.deps.logger.info("retry scheduled", {
-      issue_id: issue.id,
-      issue_identifier: issue.identifier,
-      delay_ms: delayMs,
-      attempt: failureAttempt,
-    });
+    this.retries.arm(issue, promptAttempt, failureAttempt, delayMs, () =>
+      this.onRetryTimer(issue.id),
+    );
   }
 
   /**
@@ -534,9 +536,8 @@ export class Orchestrator {
    * exhaustion, otherwise re-dispatch carrying the failure-attempt count.
    */
   async onRetryTimer(issueId: string): Promise<void> {
-    const retry = this.retries.get(issueId);
+    const retry = this.retries.take(issueId);
     if (!retry) return;
-    this.retries.delete(issueId);
     const log = this.deps.logger.child({
       issue_id: issueId,
       issue_identifier: retry.issue.identifier,
@@ -591,82 +592,13 @@ export class Orchestrator {
     );
   }
 
-  /**
-   * Build a JSON-serializable snapshot of orchestrator state for the OPTIONAL
-   * HTTP server extension (SPEC §13.7). Read-only: copies maps to plain objects
-   * so callers cannot mutate live state and so concurrent ticks don't expose
-   * partial updates. Includes `running` (with live elapsed seconds folded into
-   * `agent_totals.seconds_running`), `retrying`, and aggregate token/duration
-   * totals (SPEC §13.5).
-   */
+  /** JSON-serializable snapshot of state for the HTTP server (SPEC §13.7). */
   snapshot(): OrchestratorSnapshot {
-    const nowMs = this.now();
-    const liveElapsedSec = (() => {
-      let s = 0;
-      for (const entry of this.running.values()) {
-        s += (nowMs - entry.startedAtMs) / 1000;
-      }
-      return s;
-    })();
-
-    const running: SnapshotRunning[] = [];
-    for (const entry of this.running.values()) {
-      running.push({
-        identifier: entry.identifier,
-        issue_id: entry.issue.id,
-        issue_url: entry.issue.url,
-        title: entry.issue.title,
-        state: entry.issue.state,
-        turn_count: entry.turnCount,
-        session_id: entry.sessionId,
-        started_at: new Date(entry.startedAtMs).toISOString(),
-        last_event: entry.lastEvent,
-        last_event_at:
-          entry.lastEventAtMs === null
-            ? null
-            : new Date(entry.lastEventAtMs).toISOString(),
-        input_tokens: entry.inputTokens,
-        output_tokens: entry.outputTokens,
-        total_tokens: entry.totalTokens,
-        retry_attempt: entry.retryAttempt,
-        failure_attempt: entry.failureAttempt,
-      });
-    }
-
-    const retrying: SnapshotRetrying[] = [];
-    for (const retry of this.retries.values()) {
-      retrying.push({
-        identifier: retry.issue.identifier,
-        issue_id: retry.issue.id,
-        issue_url: retry.issue.url,
-        title: retry.issue.title,
-        attempt: retry.failureAttempt,
-        prompt_attempt: retry.promptAttempt,
-        scheduled_at: new Date(retry.scheduledAtMs).toISOString(),
-        fires_at: new Date(retry.scheduledAtMs + retry.delayMs).toISOString(),
-        delay_ms: retry.delayMs,
-      });
-    }
-
-    return {
-      generated_at: new Date(nowMs).toISOString(),
-      running,
-      retrying,
-      agent_totals: {
-        input_tokens: this.totals.inputTokens,
-        output_tokens: this.totals.outputTokens,
-        total_tokens: this.totals.totalTokens,
-        seconds_running: this.totals.secondsRunning + liveElapsedSec,
-      },
-      // SPEC §13.5: present but null when the agent protocol does not expose
-      // rate-limit counters (Claude Code SDK and Copilot CLI do not surface them).
-      rate_limits: null,
-    };
+    return buildSnapshot(this, this.now());
   }
 
   /** Cancel all pending retry timers (e.g. on shutdown). */
   cancelRetries(): void {
-    for (const retry of this.retries.values()) retry.task.cancel();
-    this.retries.clear();
+    this.retries.cancelAll();
   }
 }
