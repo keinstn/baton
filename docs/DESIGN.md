@@ -225,7 +225,8 @@ async function runAttempt(issue: Issue, workspace: string, prompt: string, onEve
 
 **Phase 3 — 拡張(SPEC §18.2)**
 
-- Copilot アダプタ、state 別並列度
+- Copilot アダプタ ✅ (`src/agent/copilot.ts`、`-p` argv + `--output-format json` JSONL、`--session-id`/`--resume` で継続ターン、resume 失敗時は同ターン内で fresh-session フォールバック、token usage は SPEC §10.2 通り 0 報告)
+- state 別並列度 ✅ (Phase 2 で実装済み: `agent.max_concurrent_agents_by_state`)
 - HTTP ダッシュボード(`/api/v1/state` 等)+ webhook refresh トリガー
 - Real Integration Profile(§17.8)のスモークテスト
 
