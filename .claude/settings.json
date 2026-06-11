@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "npx biome format --write ."
+            "command": "npm run format"
           }
         ]
       }
