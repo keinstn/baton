@@ -83,7 +83,9 @@ export class CopilotRunner implements AgentRunner {
     if (this.cfg.model) {
       parts.push("--model", shellQuote(this.cfg.model));
     }
-    parts.push(...this.cfg.extraArgs);
+    for (const arg of this.cfg.extraArgs) {
+      parts.push(shellQuote(arg));
+    }
     return parts.join(" ");
   }
 
@@ -132,6 +134,7 @@ export class CopilotRunner implements AgentRunner {
       session.agentSessionId,
       !isFirstTurn,
       onEvent,
+      isFirstTurn,
     );
     if (result.ok || isFirstTurn) return result;
 
@@ -144,7 +147,7 @@ export class CopilotRunner implements AgentRunner {
       message: `resume failed; retrying with fresh session ${fresh}`,
     });
     session.agentSessionId = fresh;
-    return this.runProcess(session, prompt, fresh, false, onEvent);
+    return this.runProcess(session, prompt, fresh, false, onEvent, true);
   }
 
   private runProcess(
@@ -153,6 +156,10 @@ export class CopilotRunner implements AgentRunner {
     sessionId: string,
     resume: boolean,
     onEvent: AgentEventCallback,
+    /** True when this process represents a brand-new agent session (first turn
+     *  or fresh-session fallback). Controls whether `session_started` can be
+     *  emitted regardless of `session.turnNumber`. */
+    isNewSession = false,
   ): Promise<TurnResult> {
     return new Promise((resolvePromise) => {
       const cmdline = this.buildCommand(prompt, sessionId, resume);
@@ -173,6 +180,10 @@ export class CopilotRunner implements AgentRunner {
       let result: TurnResult | null = null;
       let sessionStartedEmitted = false;
       let timedOut = false;
+      // Guard against Node.js firing both `error` and `close` on spawn
+      // failure (ENOENT etc.). The first handler to resolve wins; the second
+      // must not call onEvent again (callbacks are not idempotent).
+      let resolved = false;
       const timer = setTimeout(() => {
         timedOut = true;
         killProcessTree(proc);
@@ -184,6 +195,7 @@ export class CopilotRunner implements AgentRunner {
           session,
           line,
           sessionStartedEmitted,
+          isNewSession,
           onEvent,
         );
         if (r.sessionStarted) sessionStartedEmitted = true;
@@ -192,10 +204,13 @@ export class CopilotRunner implements AgentRunner {
 
       proc.on("error", (err) => {
         clearTimeout(timer);
+        resolved = true;
         resolvePromise({ ok: false, error: `startup_failed: ${String(err)}` });
       });
       proc.on("close", (code) => {
         clearTimeout(timer);
+        if (resolved) return;
+        resolved = true;
         session.proc = null;
         if (timedOut) {
           onEvent({
@@ -215,13 +230,15 @@ export class CopilotRunner implements AgentRunner {
     });
   }
 
-  /** Parse one JSONL line into normalized events. The first non-ephemeral line
-   *  promotes to `session_started`; the terminal `result` row produces the
-   *  TurnResult. */
+  /** Parse one JSONL line into normalized events. `isNewSession` is true when
+   *  this `runProcess` call represents a brand-new agent session (first turn or
+   *  fresh-session fallback), allowing `session_started` to be emitted even on
+   *  continuation turn numbers (SPEC §10.2). */
   private handleLine(
     session: AgentSession,
     line: string,
     sessionStartedEmitted: boolean,
+    isNewSession: boolean,
     onEvent: AgentEventCallback,
   ): { result: TurnResult | null; sessionStarted: boolean } {
     const trimmed = line.trim();
@@ -240,14 +257,16 @@ export class CopilotRunner implements AgentRunner {
     const type = typeof msg.type === "string" ? msg.type : "";
     const data = (msg.data ?? {}) as Record<string, unknown>;
 
-    // Emit session_started exactly once, on the first observed event after the
-    // process started, carrying the composite id `<agent_session_id>-<turn>`
-    // (SPEC §10.1 / §17.5). Continuation turns increment turn_number instead
-    // of re-emitting.
+    // Emit session_started exactly once per new agent session, carrying the
+    // composite id `<agent_session_id>-<turn>` (SPEC §10.1 / §17.5).
+    // `isNewSession` is true for the first turn AND for fresh-session fallback
+    // retries so that each distinct agent session always gets one event.
+    // Normal continuation turns (resume) set isNewSession=false to suppress
+    // re-emission.
     let didEmitSessionStart = false;
     if (
       !sessionStartedEmitted &&
-      session.turnNumber <= 1 &&
+      isNewSession &&
       session.agentSessionId !== null
     ) {
       onEvent({

@@ -68,7 +68,19 @@ describe("CopilotRunner.buildCommand (SPEC §10.2)", () => {
     expect(cmd).toContain("--allow-tool='view'");
     expect(cmd).toContain("--deny-tool='write'");
     expect(cmd).toContain("--model 'claude-opus-4-7'");
-    expect(cmd).toContain("--no-color");
+    expect(cmd).toContain("'--no-color'");
+  });
+
+  it("shell-quotes extra_args elements to prevent injection", () => {
+    const r = runner("copilot", {
+      extra_args: ["--flag=hello world", "--other; rm -rf /"],
+    });
+    const cmd = r.buildCommand("p", "u", false);
+    // Each element must be wrapped in single quotes (no raw spaces or semicolons).
+    expect(cmd).toContain("'--flag=hello world'");
+    expect(cmd).toContain("'--other; rm -rf /'");
+    // Must not appear unquoted.
+    expect(cmd).not.toMatch(/[^']--other; rm/);
   });
 
   it("safely shell-quotes prompts containing single quotes", () => {
@@ -253,5 +265,13 @@ exit 0
     expect(lines[2]).not.toContain(`--resume`);
 
     expect(events.map((e) => e.event)).toContain("notification");
+
+    // SPEC §10.2: fresh-session fallback MUST emit session_started for the
+    // new agent session so the orchestrator can update its session log.
+    const started = events.find((e) => e.event === "session_started");
+    expect(started).toBeDefined();
+    expect(started?.payload?.session_id).toBe(
+      `${session.agentSessionId}-${session.turnNumber}`,
+    );
   });
 });
