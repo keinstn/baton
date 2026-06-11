@@ -185,9 +185,13 @@ describe("worker attempt (SPEC §16)", () => {
     expect(runner.calls).toEqual([]);
   });
 
-  it("fails the attempt on a template error without starting the agent (SPEC §12.4)", async () => {
+  it("fails the attempt on a template error without starting the agent or running hooks (SPEC §12.4)", async () => {
     const root = await mkdtemp(join(tmpdir(), "baton-worker-"));
-    const config = makeConfig({ workspace: { root } });
+    const hookLog = join(root, "hook_ran");
+    const config = makeConfig({
+      workspace: { root },
+      hooks: { before_run: `touch ${hookLog}`, after_run: `touch ${hookLog}` },
+    });
     const workspaces = new WorkspaceManager(config, silentLogger);
     const runner = new FakeRunner();
     const runWorker = createWorker({
@@ -202,6 +206,8 @@ describe("worker attempt (SPEC §16)", () => {
       code: "template_render_error",
     });
     expect(runner.calls).toEqual([]);
+    // before_run must not have fired (renderPrompt failed before it was reached).
+    await expect(stat(hookLog)).rejects.toThrow();
   });
 
   it("stops the session when the run is aborted mid-flight (SPEC §8.5)", async () => {

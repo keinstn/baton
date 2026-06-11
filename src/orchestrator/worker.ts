@@ -25,7 +25,7 @@ export interface WorkerDeps {
  * cancelled (stall/reconciliation). The first turn uses the rendered task
  * prompt; continuation turns resume the session with short guidance only.
  *
- * workspace → before_run → start session → [render → turn → refresh]* → after_run.
+ * workspace → render prompt → before_run → start session → [turn → refresh]* → after_run.
  */
 export function createWorker(deps: WorkerDeps): RunWorker {
   return async function runWorker(
@@ -45,15 +45,15 @@ export function createWorker(deps: WorkerDeps): RunWorker {
       created_now: workspace.createdNow,
     });
 
-    await deps.workspaces.runBeforeRun(issue, workspace.path);
-
-    // SPEC §7.2: build the first-turn prompt before launching the agent, so a
-    // template error fails the attempt without spawning a session.
+    // SPEC §7.2: render before before_run so a template error fails the attempt
+    // without side-effects from hook execution.
     const firstPrompt = await renderPrompt(
       deps.promptTemplate(),
       issue,
       attempt,
     );
+
+    await deps.workspaces.runBeforeRun(issue, workspace.path);
 
     const session = await deps.runner.startSession(workspace.path);
     // When the orchestrator cancels (stall/reconciliation) it stops the session;
