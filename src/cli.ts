@@ -166,7 +166,11 @@ async function main(): Promise<void> {
     void httpServer?.close().catch(() => {
       /* ignore close errors during shutdown */
     });
-    void orchestrator.stopAll().then(() => {
+    const SHUTDOWN_TIMEOUT_MS = 10_000;
+    void Promise.race([
+      orchestrator.stopAll(),
+      new Promise<void>((resolve) => setTimeout(resolve, SHUTDOWN_TIMEOUT_MS)),
+    ]).then(() => {
       process.exit(0);
     });
   };
