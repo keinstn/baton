@@ -44,8 +44,10 @@ Rules:
 - Work only inside this workspace. Implement the change on the current branch and run the
   project's tests.
 - If the issue status is "Todo", move it to "In Progress" on the project board before starting work.
-- Report progress by editing a single persistent comment on the issue (create one if it does not
-  exist; do not post multiple separate comments).
+- Report progress by editing a single persistent comment on the issue. The comment must begin
+  with the marker `<!-- baton-progress -->`. On each run, search existing comments for that
+  marker first; if found, edit it in place; if not found, create it. Do not post multiple
+  separate comments.
 - Only stop early for a true blocker (missing required auth, permissions, or secrets that cannot
   be resolved in-session). If blocked, record what is missing and what action is needed to
   unblock in the progress comment, then move the issue status to "In Review" and stop.
