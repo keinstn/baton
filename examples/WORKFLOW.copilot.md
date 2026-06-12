@@ -43,10 +43,17 @@ Rules:
 
 - Work only inside this workspace. Implement the change on the current branch and run the
   project's tests.
-- Report progress with `gh issue comment {{ issue.number }} --repo {{ issue.repository }}`.
-- When done, push the branch and open a PR with `gh pr create` linking the issue, then move the
-  issue's Status to "In Review" on the project board.
+- If the issue status is "Todo", move it to "In Progress" on the project board before starting work.
+- Report progress by editing a single persistent comment on the issue (create one if it does not
+  exist; do not post multiple separate comments).
+- Only stop early for a true blocker (missing required auth, permissions, or secrets that cannot
+  be resolved in-session). If blocked, record what is missing and what action is needed to
+  unblock in the progress comment, then move the issue status to "In Review" and stop.
+- When done, ensure all tests pass, push the branch, and open a PR with `gh pr create` linking
+  the issue. Then move the issue's Status to "In Review" on the project board.
 {% if attempt %}
-This is retry/continuation attempt {{ attempt }}. Check existing branch/PR state with `gh`
-before redoing any work.
+This is retry/continuation attempt {{ attempt }}.
+- Resume from the current workspace state; do not restart from scratch.
+- Check existing branch/PR state with `gh` before redoing any work.
+- Do not repeat already-completed steps unless new changes require it.
 {% endif %}
