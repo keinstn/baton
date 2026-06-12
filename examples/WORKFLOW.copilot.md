@@ -5,7 +5,7 @@ tracker:
   project_number: 5
   token: $GITHUB_TOKEN
   status_field: Status
-  active_states: [Todo, In Progress]
+  active_states: [Todo, In Progress, Rework]
   terminal_states: [Done]
   required_labels: [ai-ready]
 polling:
@@ -44,6 +44,10 @@ Rules:
 - Work only inside this workspace. Implement the change on the current branch and run the
   project's tests.
 - If the issue status is "Todo", move it to "In Progress" on the project board before starting work.
+- If the issue status is "Rework", review all open PR comments and address each one (code
+  changes or explicit, justified pushback). Do not restart from scratch; apply targeted fixes
+  to the existing branch. When all feedback is resolved, push the branch and move the issue
+  status back to "In Review".
 - Report progress by editing a single persistent comment on the issue. The comment must begin
   with the marker `<!-- baton-progress -->`. On each run, search existing comments for that
   marker first; if found, edit it in place; if not found, create it. Do not post multiple
