@@ -303,6 +303,44 @@ describe("error mapping (SPEC §11.4)", () => {
       code: "github_api_request",
     });
   });
+
+  it("retries once on HTTP/2 GOAWAY and succeeds", async () => {
+    const goawayErr = Object.assign(new TypeError("fetch failed"), {
+      cause: new Error('HTTP/2: "GOAWAY" frame received with code 0'),
+    });
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(goawayErr)
+      .mockResolvedValueOnce(gqlResponse(PROJECT_DATA))
+      .mockResolvedValueOnce(
+        gqlResponse(itemsPage([item(1, "Todo")], null, false)),
+      );
+    const c = new GitHubProjectsClient(
+      trackerConfig(),
+      fetchMock as unknown as typeof fetch,
+    );
+    const issues = await c.fetchCandidateIssues();
+    expect(issues).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(3); // 1 GOAWAY + 1 project resolve retry + 1 items
+  });
+
+  it("propagates as github_api_request when GOAWAY retry also fails", async () => {
+    const goawayErr = Object.assign(new TypeError("fetch failed"), {
+      cause: new Error('HTTP/2: "GOAWAY" frame received with code 0'),
+    });
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(goawayErr)
+      .mockRejectedValueOnce(new Error("connection refused"));
+    const c = new GitHubProjectsClient(
+      trackerConfig(),
+      fetchMock as unknown as typeof fetch,
+    );
+    await expect(c.fetchCandidateIssues()).rejects.toMatchObject({
+      code: "github_api_request",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("issue state refresh (SPEC §11.1 op 3)", () => {

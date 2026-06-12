@@ -7,6 +7,20 @@ import type { Issue, TrackerClient } from "./types.js";
 
 const NETWORK_TIMEOUT_MS = 30000;
 
+/**
+ * Walk the error cause chain looking for an HTTP/2 GOAWAY message.
+ * Node.js fetch (undici) throws instead of transparently retrying when the
+ * server sends GOAWAY — a one-shot retry on a fresh connection fixes it.
+ */
+function isGoawayError(err: unknown): boolean {
+  let cur: unknown = err;
+  while (cur instanceof Error) {
+    if (cur.message.includes("GOAWAY")) return true;
+    cur = (cur as Error & { cause?: unknown }).cause;
+  }
+  return false;
+}
+
 export interface ProjectMeta {
   projectId: string;
   statusOptions: string[];
@@ -85,22 +99,40 @@ export class GitHubProjectsClient implements TrackerClient {
         "tracker token is not configured",
       );
     }
+    const token = this.cfg.token;
     const varKeys = Object.keys(variables).join(",");
     const startMs = Date.now();
     this.logger?.debug("github api request", { variables: varKeys });
-    let res: Response;
-    try {
-      res = await this.fetchFn(this.cfg.endpoint, {
+
+    const doFetch = () =>
+      this.fetchFn(this.cfg.endpoint, {
         method: "POST",
         headers: {
-          authorization: `Bearer ${this.cfg.token}`,
+          authorization: `Bearer ${token}`,
           "content-type": "application/json",
         },
         body: JSON.stringify({ query, variables }),
         signal: AbortSignal.timeout(NETWORK_TIMEOUT_MS),
       });
+
+    let res: Response;
+    try {
+      res = await doFetch();
     } catch (err) {
-      throw new BatonError("github_api_request", String(err), { cause: err });
+      // HTTP/2 GOAWAY (code 0 = graceful shutdown): the server closed the
+      // connection normally; retry once so undici opens a fresh connection.
+      if (isGoawayError(err)) {
+        this.logger?.debug("github api: GOAWAY received, retrying");
+        try {
+          res = await doFetch();
+        } catch (retryErr) {
+          throw new BatonError("github_api_request", String(retryErr), {
+            cause: retryErr,
+          });
+        }
+      } else {
+        throw new BatonError("github_api_request", String(err), { cause: err });
+      }
     }
     this.logger?.debug("github api response", {
       status: res.status,
