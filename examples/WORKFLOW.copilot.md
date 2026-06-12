@@ -18,8 +18,10 @@ hooks:
   before_run: |
     git fetch origin
     BRANCH="agent/$BATON_ISSUE_IDENTIFIER"
-    if git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null 2>&1 && \
-       gh pr list --repo "$BATON_ISSUE_REPO" --head "$BRANCH" --state open --json number --jq 'length > 0' | grep -q true; then
+    if [ "$BATON_ISSUE_STATUS" = "Rework" ]; then
+      git switch -C "$BRANCH" origin/main
+    elif git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null 2>&1 && \
+         gh pr list --repo "$BATON_ISSUE_REPO" --head "$BRANCH" --state open --json number --jq 'length > 0' | grep -q true; then
       git switch "$BRANCH"
     else
       git switch -C "$BRANCH" origin/main
