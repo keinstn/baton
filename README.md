@@ -67,17 +67,23 @@ Navigate to your organization or user profile → **Projects** → **New project
 
 **2. Configure Status columns**
 
-A new board starts with `Todo`, `In Progress`, and `Done`. Add any extra states Baton needs —
-for example `In Review` as the handoff state — by clicking **+** at the right edge of the board
-and selecting **New option**.
+A new board starts with `Todo`, `In Progress`, and `Done`. If your prompt instructs the agent
+to move issues to a custom state when done (e.g. `In Review`), add that column by clicking
+**+** at the right edge of the board and selecting **New option**.
 
-The column names must exactly match the values you set in `WORKFLOW.md`:
+The column names must exactly match the values you reference in `WORKFLOW.md`. Configure which
+states Baton should pick up work from:
 
 ```yaml
 tracker:
   active_states: [Todo, In Progress]   # Baton picks up issues in these states
-  handoff_state: In Review             # Agent moves the issue here when done
+  # terminal_states: [Done]            # (optional) default: [Done]
 ```
+
+The state the agent moves issues to when done is **not** a config key — specify it in your
+`WORKFLOW.md` prompt body:
+
+> When done, move the issue's Status to "In Review" on the project board.
 
 **3. Create a label**
 
@@ -154,7 +160,7 @@ in `active_states` (e.g. `Todo`, `In Progress`) and carries the `required_labels
 are claimed and dispatched to a worker, which prepares a per-issue workspace (clone via hooks),
 renders the issue into the `WORKFLOW.md` prompt template, and drives a Claude Code session in that
 workspace. The agent does the work and performs all tracker writes itself with the `gh` CLI —
-commenting progress, opening a PR, and moving the Status to the handoff state (e.g. `In Review`).
+commenting progress, opening a PR, and moving the Status out of `active_states` (e.g. to `In Review` as instructed in the prompt).
 Baton stops sessions whose issues leave the active states and cleans up workspaces for terminal
 issues.
 
