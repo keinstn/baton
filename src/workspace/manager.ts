@@ -64,6 +64,7 @@ export class WorkspaceManager {
       BATON_ISSUE_NUMBER: String(issue.number),
       BATON_ISSUE_REPO: issue.repository,
       BATON_ISSUE_URL: issue.url ?? "",
+      BATON_ISSUE_STATUS: issue.state,
       BATON_WORKSPACE: workspacePath,
     };
   }

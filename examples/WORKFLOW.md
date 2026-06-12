@@ -5,7 +5,7 @@ tracker:
   project_number: 5
   token: $GITHUB_TOKEN
   status_field: Status
-  active_states: [Todo, In Progress]
+  active_states: [Todo, In Progress, Rework]
   terminal_states: [Done]
   required_labels: [ai-ready]
 polling:
@@ -17,7 +17,15 @@ hooks:
     gh repo clone "$BATON_ISSUE_REPO" . -- --depth 50
   before_run: |
     git fetch origin
-    git switch -C "agent/$BATON_ISSUE_IDENTIFIER" origin/main
+    BRANCH="agent/$BATON_ISSUE_IDENTIFIER"
+    if [ "$BATON_ISSUE_STATUS" = "Rework" ]; then
+      git switch -C "$BRANCH" origin/main
+    elif git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null 2>&1 && \
+         gh pr list --repo "$BATON_ISSUE_REPO" --head "$BRANCH" --state open --json number --jq 'length > 0' | grep -q true; then
+      git switch "$BRANCH"
+    else
+      git switch -C "$BRANCH" origin/main
+    fi
 agent:
   kind: claude_code
   max_concurrent_agents: 3
@@ -43,7 +51,15 @@ Rules:
 
 - Work only inside this workspace. Implement the change on the current branch and run the
   project's tests.
-- If the issue status is "Todo", move it to "In Progress" on the project board before starting work.
+- If the issue status is "Todo" and no open PR exists for this branch, move the issue to
+  "In Progress" on the project board before starting work.
+- If the issue status is "Todo" and an open PR already exists for this branch, treat it as a
+  feedback loop: review all open PR comments and address each one (code changes or explicit,
+  justified pushback). When all feedback is resolved, push the branch and move the issue
+  status back to "In Review".
+- If the issue status is "Rework", treat it as a full approach reset: close the existing PR,
+  create a fresh branch from origin/main, and restart implementation from scratch addressing
+  the review feedback. When done, open a new PR and move the issue status to "In Review".
 - Report progress by editing a single persistent comment on the issue. The comment must begin
   with the marker `<!-- baton-progress -->`. On each run, search existing comments for that
   marker first; if found, edit it in place; if not found, create it. Do not post multiple

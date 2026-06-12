@@ -273,7 +273,7 @@ top-level keys (for example `server`, Section 13.7).
 - `timeout_ms` (integer), default `60000`.
 - Hooks run with the workspace directory as cwd and receive these environment variables:
   `BATON_ISSUE_ID`, `BATON_ISSUE_IDENTIFIER`, `BATON_ISSUE_NUMBER`, `BATON_ISSUE_REPO`,
-  `BATON_ISSUE_URL`, `BATON_WORKSPACE`.
+  `BATON_ISSUE_URL`, `BATON_ISSUE_STATUS`, `BATON_WORKSPACE`.
 
 #### 5.3.5 `agent` (object)
 
