@@ -53,10 +53,10 @@ Rules:
   project's tests.
 - If the issue status is "Todo" and no open PR exists for this branch, move the issue to
   "In Progress" on the project board before starting work.
-- If the issue status is "Todo" and an open PR already exists for this branch, treat it as a
-  feedback loop: review all open PR comments and address each one (code changes or explicit,
-  justified pushback). When all feedback is resolved, push the branch and move the issue
-  status back to "In Review".
+- If the issue status is "Todo" and an open PR already exists for this branch, move the issue
+  to "In Progress" on the project board, then treat it as a feedback loop: review all open PR
+  comments and address each one (code changes or explicit, justified pushback). When all
+  feedback is resolved, push the branch and move the issue status back to "In Review".
 - If the issue status is "Rework", treat it as a full approach reset: close the existing PR,
   create a fresh branch from origin/main, and restart implementation from scratch addressing
   the review feedback. When done, open a new PR and move the issue status to "In Review".
