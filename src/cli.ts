@@ -161,13 +161,18 @@ async function main(): Promise<void> {
     logger.info("shutting down", { signal });
     stopped = true;
     if (timer) clearTimeout(timer);
-    orchestrator.cancelRetries();
     if (reloadTimer) clearTimeout(reloadTimer);
     watcher.close();
     void httpServer?.close().catch(() => {
       /* ignore close errors during shutdown */
     });
-    process.exit(0);
+    const SHUTDOWN_TIMEOUT_MS = 10_000;
+    void Promise.race([
+      orchestrator.stopAll(),
+      new Promise<void>((resolve) => setTimeout(resolve, SHUTDOWN_TIMEOUT_MS)),
+    ]).then(() => {
+      process.exit(0);
+    });
   };
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));

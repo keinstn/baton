@@ -600,3 +600,58 @@ describe("reconciliation (SPEC §8.5)", () => {
     expect(orchestrator.running.size).toBe(1);
   });
 });
+
+describe("stopAll", () => {
+  /** A worker that hangs until aborted. */
+  function abortableWorker() {
+    return vi.fn(
+      (_i: Issue, _a: number | null, _e: unknown, signal: AbortSignal) =>
+        new Promise<void>((_resolve, reject) => {
+          if (signal.aborted) {
+            reject(new Error("aborted"));
+            return;
+          }
+          signal.addEventListener("abort", () => reject(new Error("aborted")), {
+            once: true,
+          });
+        }),
+    );
+  }
+
+  it("aborts all running workers and resolves when they finish", async () => {
+    const issues = [makeIssue({ id: "a" }), makeIssue({ id: "b" })];
+    const { orchestrator } = makeOrchestrator(issues, {
+      runWorker: abortableWorker(),
+      tracker: {
+        fetchCandidateIssues: vi.fn(async () => []),
+        fetchIssueStatesByIds: vi.fn(async () => []),
+      },
+    });
+    orchestrator.dispatch(issues[0], null);
+    orchestrator.dispatch(issues[1], null);
+    expect(orchestrator.running.size).toBe(2);
+
+    await orchestrator.stopAll();
+
+    expect(orchestrator.running.size).toBe(0);
+  });
+
+  it("cancels pending retry timers", async () => {
+    const issue = makeIssue();
+    const { orchestrator, clock } = makeOrchestrator([issue], {
+      runWorker: vi.fn(async () => {}),
+    });
+    await orchestrator.tick();
+    await settle();
+    expect(clock.pendingCount()).toBeGreaterThan(0);
+
+    await orchestrator.stopAll();
+
+    expect(clock.pendingCount()).toBe(0);
+  });
+
+  it("resolves immediately when no workers are running", async () => {
+    const { orchestrator } = makeOrchestrator([]);
+    await expect(orchestrator.stopAll()).resolves.toBeUndefined();
+  });
+});
