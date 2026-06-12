@@ -30,6 +30,8 @@ export interface RunningEntry {
   abort: AbortController;
   /** Set before aborting so the worker-exit handler knows it was intentional. */
   stopReason: StopReason | null;
+  /** Resolves when the worker promise settles (used by stopAll). */
+  promise: Promise<void>;
 }
 
 export interface AgentTotals {
@@ -432,7 +434,7 @@ export class Orchestrator {
     });
     const abort = new AbortController();
     this.claimed.add(issue.id);
-    this.running.set(issue.id, {
+    const entry: RunningEntry = {
       issue,
       identifier: issue.identifier,
       startedAtMs: this.now(),
@@ -447,10 +449,12 @@ export class Orchestrator {
       failureAttempt,
       abort,
       stopReason: null,
-    });
+      promise: Promise.resolve(),
+    };
+    this.running.set(issue.id, entry);
     log.info("dispatching issue", { state: issue.state, attempt });
 
-    Promise.resolve()
+    entry.promise = Promise.resolve()
       .then(() =>
         this.deps.runWorker(
           issue,
@@ -662,5 +666,20 @@ export class Orchestrator {
   /** Cancel all pending retry timers (e.g. on shutdown). */
   cancelRetries(): void {
     this.retries.cancelAll();
+  }
+
+  /**
+   * Graceful shutdown: cancel all retries, abort every running agent, and wait
+   * for their worker promises to settle so no orphan processes remain.
+   */
+  async stopAll(): Promise<void> {
+    this.cancelRetries();
+    const entries = [...this.running.values()];
+    for (const entry of entries) {
+      if (!entry.stopReason) {
+        this.stopRunning(entry, "reconcile_inactive");
+      }
+    }
+    await Promise.allSettled(entries.map((e) => e.promise));
   }
 }
