@@ -40,6 +40,10 @@ follows the Symphony spec unchanged.
 - The coding agent binary matching your `agent.kind`:
   - `claude_code` → [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)
   - `copilot` → [GitHub Copilot CLI](https://githubnext.com/projects/copilot-cli)
+- **Windows:** [Git for Windows](https://gitforwindows.org/) — workspace hooks are POSIX shell
+  scripts and run under its `bash.exe` (resolved from `PATH`, then the standard Git install
+  locations). macOS/Linux use the system `bash`. The agent CLI itself is spawned directly without
+  a shell, so it behaves the same across platforms.
 
 **Build from source**
 

@@ -1,41 +1,29 @@
-import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { ClaudeCodeRunner, shellQuote } from "../src/agent/claude-code.js";
+import { ClaudeCodeRunner } from "../src/agent/claude-code.js";
 import type { AgentEvent } from "../src/agent/runner.js";
-import { makeConfig } from "./helpers.js";
-
-async function fakeClaude(
-  script: string,
-): Promise<{ command: string; workspace: string }> {
-  const dir = await mkdtemp(join(tmpdir(), "baton-cc-"));
-  const command = join(dir, "fake-claude");
-  await writeFile(command, `#!/usr/bin/env bash\ncat >/dev/null\n${script}\n`);
-  await chmod(command, 0o755);
-  const workspace = join(dir, "ws");
-  await (await import("node:fs/promises")).mkdir(workspace);
-  return { command, workspace };
-}
+import {
+  makeConfig,
+  makeMockAgent,
+  mockAgentDir,
+  writeMockAgent,
+} from "./helpers.js";
 
 function runner(command: string, overrides: Record<string, unknown> = {}) {
   const config = makeConfig({ claude_code: { command, ...overrides } });
   return new ClaudeCodeRunner(config.claudeCode);
 }
 
-const SUCCESS_SCRIPT = `
-echo '{"type":"system","subtype":"init","session_id":"sess-123"}'
-echo '{"type":"assistant","message":{"content":[{"type":"text","text":"working on it"},{"type":"tool_use","name":"Bash"}]}}'
-echo 'this is not json'
-echo '{"type":"result","subtype":"success","is_error":false,"result":"done","usage":{"input_tokens":10,"output_tokens":5}}'
-`;
-
-describe("shellQuote", () => {
-  it("quotes shell metacharacters safely", () => {
-    expect(shellQuote("simple")).toBe("'simple'");
-    expect(shellQuote("a'b")).toBe("'a'\\''b'");
-  });
-});
+// Fake `claude` CLI: emits stream-json lines then exits. Mirrors a successful
+// turn with an init message, assistant text + tool_use, a malformed line, and a
+// result carrying usage.
+const SUCCESS_BODY = [
+  `process.stdout.write('{"type":"system","subtype":"init","session_id":"sess-123"}\\n');`,
+  `process.stdout.write('{"type":"assistant","message":{"content":[{"type":"text","text":"working on it"},{"type":"tool_use","name":"Bash"}]}}\\n');`,
+  `process.stdout.write('this is not json\\n');`,
+  `process.stdout.write('{"type":"result","subtype":"success","is_error":false,"result":"done","usage":{"input_tokens":10,"output_tokens":5}}\\n');`,
+].join("\n");
 
 describe("buildCommand (SPEC §10.1)", () => {
   it("includes stream-json output and the documented permission posture", () => {
@@ -45,26 +33,35 @@ describe("buildCommand (SPEC §10.1)", () => {
       disallowed_tools: ["WebSearch"],
       model: "claude-opus-4-8",
     });
-    const cmd = r.buildCommand();
+    const cmd = r.buildCommand().join(" ");
     expect(cmd).toContain("-p --output-format stream-json --verbose");
-    expect(cmd).toContain("--permission-mode 'acceptEdits'");
-    expect(cmd).toContain("--allowedTools 'Bash(gh:*),Edit'");
-    expect(cmd).toContain("--disallowedTools 'WebSearch'");
-    expect(cmd).toContain("--model 'claude-opus-4-8'");
+    expect(cmd).toContain("--permission-mode acceptEdits");
+    expect(cmd).toContain("--allowedTools Bash(gh:*),Edit");
+    expect(cmd).toContain("--disallowedTools WebSearch");
+    expect(cmd).toContain("--model claude-opus-4-8");
+  });
+
+  it("passes values as discrete argv elements verbatim (no shell quoting)", () => {
+    const r = runner("claude", { append_system_prompt: "be nice; rm -rf /" });
+    const cmd = r.buildCommand();
+    const i = cmd.indexOf("--append-system-prompt");
+    expect(cmd[i + 1]).toBe("be nice; rm -rf /");
   });
 
   it("adds --resume only when a session id is supplied (SPEC §10.1)", () => {
     const r = runner("claude");
-    expect(r.buildCommand("sess-9")).toContain("--resume 'sess-9'");
-    expect(r.buildCommand(null)).not.toContain("--resume");
-    expect(r.buildCommand()).not.toContain("--resume");
+    expect(r.buildCommand("sess-9").join(" ")).toContain("--resume sess-9");
+    expect(r.buildCommand(null).join(" ")).not.toContain("--resume");
+    expect(r.buildCommand().join(" ")).not.toContain("--resume");
   });
 });
 
 describe("applyConfig (SPEC §6.2 hot-reload)", () => {
   it("updates buildCommand output on the next call", () => {
     const r = runner("claude", { permission_mode: "acceptEdits" });
-    expect(r.buildCommand()).toContain("--permission-mode 'acceptEdits'");
+    expect(r.buildCommand().join(" ")).toContain(
+      "--permission-mode acceptEdits",
+    );
 
     const updatedConfig = makeConfig({
       claude_code: {
@@ -75,9 +72,9 @@ describe("applyConfig (SPEC §6.2 hot-reload)", () => {
     });
     r.applyConfig(updatedConfig.claudeCode);
 
-    const cmd = r.buildCommand();
-    expect(cmd).toContain("--permission-mode 'bypassPermissions'");
-    expect(cmd).toContain("--model 'claude-haiku-4-5'");
+    const cmd = r.buildCommand().join(" ");
+    expect(cmd).toContain("--permission-mode bypassPermissions");
+    expect(cmd).toContain("--model claude-haiku-4-5");
   });
 });
 
@@ -94,7 +91,10 @@ describe("startSession (SPEC §9.5 Invariant 1)", () => {
 
 describe("runTurn stream-json parsing (SPEC §10.1)", () => {
   it("parses a successful turn: session id, events, usage", async () => {
-    const { command, workspace } = await fakeClaude(SUCCESS_SCRIPT);
+    const { command, workspace } = await makeMockAgent(
+      SUCCESS_BODY,
+      "baton-cc-",
+    );
     const r = runner(command);
     const session = await r.startSession(workspace);
     const events: AgentEvent[] = [];
@@ -115,8 +115,9 @@ describe("runTurn stream-json parsing (SPEC §10.1)", () => {
   });
 
   it("maps an error result to a failed turn", async () => {
-    const { command, workspace } = await fakeClaude(
-      `echo '{"type":"result","subtype":"error_during_execution","is_error":true,"result":"failed badly"}'`,
+    const { command, workspace } = await makeMockAgent(
+      `process.stdout.write('{"type":"result","subtype":"error_during_execution","is_error":true,"result":"failed badly"}\\n');`,
+      "baton-cc-",
     );
     const r = runner(command);
     const session = await r.startSession(workspace);
@@ -128,7 +129,10 @@ describe("runTurn stream-json parsing (SPEC §10.1)", () => {
   });
 
   it("maps a nonzero exit without a result line to process_exit", async () => {
-    const { command, workspace } = await fakeClaude("exit 3");
+    const { command, workspace } = await makeMockAgent(
+      "process.exit(3);",
+      "baton-cc-",
+    );
     const r = runner(command);
     const session = await r.startSession(workspace);
     const result = await r.runTurn(session, "x", () => {});
@@ -137,7 +141,10 @@ describe("runTurn stream-json parsing (SPEC §10.1)", () => {
   });
 
   it("enforces the turn timeout (SPEC §10.3)", async () => {
-    const { command, workspace } = await fakeClaude("sleep 30");
+    const { command, workspace } = await makeMockAgent(
+      "setTimeout(() => {}, 30000);",
+      "baton-cc-",
+    );
     const r = runner(command, { turn_timeout_ms: 300 });
     const session = await r.startSession(workspace);
     const start = Date.now();
@@ -148,18 +155,16 @@ describe("runTurn stream-json parsing (SPEC §10.1)", () => {
   });
 
   it("resumes the session on continuation turns and emits session_started once (SPEC §10.1, §17.5)", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "baton-cc-"));
+    const { dir, workspace } = await mockAgentDir("baton-cc-");
     const argsLog = join(dir, "args.log");
-    const command = join(dir, "fake-claude");
-    await writeFile(
-      command,
-      `#!/usr/bin/env bash\ncat >/dev/null\necho "$@" >> ${argsLog}\n` +
-        `echo '{"type":"system","subtype":"init","session_id":"sess-xyz"}'\n` +
-        `echo '{"type":"result","subtype":"success","is_error":false,"result":"ok"}'\n`,
+    const command = await writeMockAgent(
+      dir,
+      [
+        `require("fs").appendFileSync(${JSON.stringify(argsLog)}, process.argv.slice(2).join(" ") + "\\n");`,
+        `process.stdout.write('{"type":"system","subtype":"init","session_id":"sess-xyz"}\\n');`,
+        `process.stdout.write('{"type":"result","subtype":"success","is_error":false,"result":"ok"}\\n');`,
+      ].join("\n"),
     );
-    await chmod(command, 0o755);
-    const workspace = join(dir, "ws");
-    await mkdir(workspace);
 
     const r = runner(command);
     const session = await r.startSession(workspace);

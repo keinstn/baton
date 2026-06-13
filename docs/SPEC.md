@@ -294,10 +294,12 @@ Runner-specific config when `agent.kind == "claude_code"`. Values not listed her
 pass-through to the targeted Claude Code version; implementations SHOULD NOT hand-maintain enums
 for pass-through values.
 
-- `command` (string shell command)
-  - Default: `claude`. Used when driving the CLI as a subprocess. Implementations using the
-    Claude Agent SDK in-process MAY ignore `command` but MUST still validate that the runtime can
-    start a session.
+- `command` (string: executable plus optional arguments)
+  - Default: `claude`. Used when driving the CLI as a subprocess. Tokenized on whitespace
+    (single/double quotes group tokens with spaces); it is NOT a full shell line — pipes,
+    redirects, globbing, and variable expansion are not supported, because the agent is spawned
+    directly without a shell (see §10.1). Implementations using the Claude Agent SDK in-process
+    MAY ignore `command` but MUST still validate that the runtime can start a session.
 - `model` (string, OPTIONAL) — passed through to the session.
 - `permission_mode` (string)
   - Default: `acceptEdits`. Pass-through Claude Code permission mode (for example `default`,
@@ -314,7 +316,8 @@ for pass-through values.
 
 Runner-specific config when `agent.kind == "copilot"`.
 
-- `command` (string shell command), default `copilot`.
+- `command` (string: executable plus optional arguments), default `copilot`. Tokenized on
+  whitespace like `claude_code.command` (§5.3.6); not a full shell line.
 - `model` (string, OPTIONAL).
 - `allow_all_tools` (boolean), default `false`.
 - `allow_tools` / `deny_tools` (lists of strings, OPTIONAL) — pass-through tool permissions.
@@ -489,7 +492,10 @@ Query terminal-state issues, remove corresponding workspaces, log-and-continue o
 - Per-issue path: `<workspace.root>/<sanitized_issue_identifier>`; workspaces are reused across
   runs and not auto-deleted on success.
 - Creation algorithm, hook execution contract (`sh -lc`/`bash -lc`, cwd = workspace,
-  `hooks.timeout_ms`), and failure semantics are inherited unchanged.
+  `hooks.timeout_ms`), and failure semantics are inherited unchanged. Hooks are POSIX shell
+  scripts and run under `bash`; on Windows this REQUIRES Git for Windows' `bash.exe` (resolved
+  from `PATH`, then the standard Git install locations). When no bash is found the hook fails
+  with a clear `hook_failed` message rather than silently.
 - OPTIONAL workspace population is implementation-defined and typically done in hooks (for
   example `gh repo clone` in `after_create`, `git fetch && git switch` in `before_run`).
 
@@ -542,9 +548,13 @@ Two conforming transport modes:
   session working directory, `permission_mode`, `allowed_tools`/`disallowed_tools`, `model`, and
   a per-turn `max_turns` of the SDK's choosing while Baton enforces `agent.max_turns` at the
   worker-loop level.
-- **CLI subprocess mode:** launch `bash -lc "<claude_code.command> -p <prompt> --output-format
-  stream-json --verbose ..."` with cwd = workspace, parsing newline-delimited JSON from stdout
-  and keeping stderr separate. RECOMMENDED max line buffer: 10 MB.
+- **CLI subprocess mode:** spawn the agent argv directly — `<claude_code.command>` plus
+  `-p --output-format stream-json --verbose ...` — with cwd = workspace, **no shell wrapper**, so
+  arguments (and the untrusted prompt) are passed verbatim and never reinterpreted by a shell. The
+  prompt is delivered on stdin to avoid argv length limits. On Windows the executable is resolved
+  against `PATH`/`PATHEXT`; real executables (`.exe`) run with `shell:false`, while `.cmd`/`.bat`
+  shims require `shell:true` (Node refuses to spawn them otherwise). Parse newline-delimited JSON
+  from stdout and keep stderr separate. RECOMMENDED max line buffer: 10 MB.
 
 Session startup responsibilities:
 
@@ -579,8 +589,13 @@ Approval / user-input policy (documented posture, Section 15):
 
 ### 10.2 Copilot CLI Adapter
 
-- Launch: `bash -lc "<copilot.command> -p <prompt> ..."` with cwd = workspace, plus
-  `--allow-all-tools` or `--allow-tool`/`--deny-tool` flags per config.
+- Launch: spawn `<copilot.command> -p <prompt> ...` argv directly (no shell wrapper, same
+  resolution rules as §10.1) with cwd = workspace, plus `--allow-all-tools` or
+  `--allow-tool`/`--deny-tool` flags per config. The Copilot CLI takes the prompt via argv (no
+  stdin); spawning without a shell means the prompt is passed verbatim. NOTE: on Windows a
+  `.cmd`/`.bat` shim is launched via `shell:true`, so for that case the argv prompt does pass
+  through cmd.exe — prefer a `.exe` install, or a future stdin/prompt-file input, when running
+  untrusted issue content on Windows.
 - Continuation turns resume the prior session where the targeted CLI version supports it
   (`--resume`); where resume is unavailable, the adapter MUST treat each turn as a new session in
   the same workspace and document this limitation.

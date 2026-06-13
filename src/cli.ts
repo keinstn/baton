@@ -176,6 +176,10 @@ async function main(): Promise<void> {
   };
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));
+  // Windows delivers Ctrl+Break as SIGBREAK (and SIGTERM is not delivered).
+  if (process.platform === "win32") {
+    process.on("SIGBREAK", () => shutdown("SIGBREAK"));
+  }
 }
 
 main().catch((err: unknown) => {

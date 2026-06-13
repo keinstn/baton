@@ -1,22 +1,14 @@
-import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CopilotRunner } from "../src/agent/copilot.js";
 import type { AgentEvent } from "../src/agent/runner.js";
-import { makeConfig } from "./helpers.js";
-
-async function fakeCopilot(
-  script: string,
-): Promise<{ command: string; workspace: string; dir: string }> {
-  const dir = await mkdtemp(join(tmpdir(), "baton-cp-"));
-  const command = join(dir, "fake-copilot");
-  await writeFile(command, `#!/usr/bin/env bash\n${script}\n`);
-  await chmod(command, 0o755);
-  const workspace = join(dir, "ws");
-  await mkdir(workspace);
-  return { command, workspace, dir };
-}
+import {
+  makeConfig,
+  makeMockAgent,
+  mockAgentDir,
+  writeMockAgent,
+} from "./helpers.js";
 
 function runner(command: string, overrides: Record<string, unknown> = {}) {
   const config = makeConfig({
@@ -26,31 +18,32 @@ function runner(command: string, overrides: Record<string, unknown> = {}) {
   return new CopilotRunner(config.copilot);
 }
 
-const SUCCESS_SCRIPT = `
-echo '{"type":"session.mcp_servers_loaded","data":{},"ephemeral":true}'
-echo '{"type":"assistant.turn_start","data":{"turnId":"0"}}'
-echo '{"type":"tool.execution_start","data":{"toolName":"view"}}'
-echo '{"type":"tool.execution_complete","data":{"toolName":"view","success":true}}'
-echo '{"type":"assistant.message","data":{"content":"hello world"}}'
-echo 'this is not json'
-echo '{"type":"result","exitCode":0,"sessionId":"abc","usage":{"premiumRequests":1.0}}'
-`;
+// Fake `copilot` CLI: emits JSONL lines then exits with a result line.
+const SUCCESS_BODY = [
+  `process.stdout.write('{"type":"session.mcp_servers_loaded","data":{},"ephemeral":true}\\n');`,
+  `process.stdout.write('{"type":"assistant.turn_start","data":{"turnId":"0"}}\\n');`,
+  `process.stdout.write('{"type":"tool.execution_start","data":{"toolName":"view"}}\\n');`,
+  `process.stdout.write('{"type":"tool.execution_complete","data":{"toolName":"view","success":true}}\\n');`,
+  `process.stdout.write('{"type":"assistant.message","data":{"content":"hello world"}}\\n');`,
+  `process.stdout.write('this is not json\\n');`,
+  `process.stdout.write('{"type":"result","exitCode":0,"sessionId":"abc","usage":{"premiumRequests":1.0}}\\n');`,
+].join("\n");
 
 describe("CopilotRunner.buildCommand (SPEC §10.2)", () => {
   it("includes JSONL output, no-ask-user, and pinned session id on first turn", () => {
     const r = runner("copilot");
-    const cmd = r.buildCommand("hello", "uuid-1", false);
-    expect(cmd).toContain("copilot -p 'hello'");
+    const cmd = r.buildCommand("hello", "uuid-1", false).join(" ");
+    expect(cmd).toContain("-p hello");
     expect(cmd).toContain("--output-format json");
     expect(cmd).toContain("--no-ask-user");
-    expect(cmd).toContain("--session-id 'uuid-1'");
+    expect(cmd).toContain("--session-id uuid-1");
     expect(cmd).not.toContain("--resume");
   });
 
   it("uses --resume on continuation turns instead of --session-id", () => {
     const r = runner("copilot");
-    const cmd = r.buildCommand("p", "uuid-2", true);
-    expect(cmd).toContain("--resume 'uuid-2'");
+    const cmd = r.buildCommand("p", "uuid-2", true).join(" ");
+    expect(cmd).toContain("--resume uuid-2");
     expect(cmd).not.toContain("--session-id");
   });
 
@@ -64,29 +57,25 @@ describe("CopilotRunner.buildCommand (SPEC §10.2)", () => {
     });
     const cmd = r.buildCommand("p", "u", false);
     expect(cmd).toContain("--allow-all-tools");
-    expect(cmd).toContain("--allow-tool='shell(gh)'");
-    expect(cmd).toContain("--allow-tool='view'");
-    expect(cmd).toContain("--deny-tool='write'");
-    expect(cmd).toContain("--model 'claude-opus-4-7'");
-    expect(cmd).toContain("'--no-color'");
+    expect(cmd).toContain("--allow-tool=shell(gh)");
+    expect(cmd).toContain("--allow-tool=view");
+    expect(cmd).toContain("--deny-tool=write");
+    expect(cmd).toContain("--model");
+    expect(cmd).toContain("claude-opus-4-7");
+    expect(cmd).toContain("--no-color");
   });
 
-  it("shell-quotes extra_args elements to prevent injection", () => {
+  it("passes extra_args and prompts as discrete argv elements verbatim", () => {
+    // With argv-based spawn there is no shell, so metacharacters need no
+    // escaping: each value reaches the CLI as one untouched argument.
     const r = runner("copilot", {
       extra_args: ["--flag=hello world", "--other; rm -rf /"],
     });
-    const cmd = r.buildCommand("p", "u", false);
-    // Each element must be wrapped in single quotes (no raw spaces or semicolons).
-    expect(cmd).toContain("'--flag=hello world'");
-    expect(cmd).toContain("'--other; rm -rf /'");
-    // Must not appear unquoted.
-    expect(cmd).not.toMatch(/[^']--other; rm/);
-  });
-
-  it("safely shell-quotes prompts containing single quotes", () => {
-    const r = runner("copilot");
     const cmd = r.buildCommand("o'clock", "u", false);
-    expect(cmd).toContain("-p 'o'\\''clock'");
+    expect(cmd).toContain("--flag=hello world");
+    expect(cmd).toContain("--other; rm -rf /");
+    const i = cmd.indexOf("-p");
+    expect(cmd[i + 1]).toBe("o'clock");
   });
 });
 
@@ -99,9 +88,9 @@ describe("CopilotRunner.applyConfig (SPEC §6.2 hot-reload)", () => {
       copilot: { command: "copilot", allow_all_tools: true, model: "gpt-x" },
     });
     r.applyConfig(next.copilot);
-    const cmd = r.buildCommand("p", "u", false);
+    const cmd = r.buildCommand("p", "u", false).join(" ");
     expect(cmd).toContain("--allow-all-tools");
-    expect(cmd).toContain("--model 'gpt-x'");
+    expect(cmd).toContain("--model gpt-x");
   });
 });
 
@@ -116,7 +105,10 @@ describe("CopilotRunner.startSession (SPEC §9.5 Invariant 1)", () => {
 
 describe("CopilotRunner.runTurn JSONL parsing (SPEC §10.2)", () => {
   it("parses a successful turn: session_started, events, zero usage", async () => {
-    const { command, workspace } = await fakeCopilot(SUCCESS_SCRIPT);
+    const { command, workspace } = await makeMockAgent(
+      SUCCESS_BODY,
+      "baton-cp-",
+    );
     const r = runner(command);
     const session = await r.startSession(workspace);
     const events: AgentEvent[] = [];
@@ -144,8 +136,9 @@ describe("CopilotRunner.runTurn JSONL parsing (SPEC §10.2)", () => {
   });
 
   it("maps a non-zero exitCode in result to a failed turn", async () => {
-    const { command, workspace } = await fakeCopilot(
-      `echo '{"type":"result","exitCode":2,"sessionId":"x"}'`,
+    const { command, workspace } = await makeMockAgent(
+      `process.stdout.write('{"type":"result","exitCode":2,"sessionId":"x"}\\n');`,
+      "baton-cp-",
     );
     const r = runner(command);
     const session = await r.startSession(workspace);
@@ -157,7 +150,10 @@ describe("CopilotRunner.runTurn JSONL parsing (SPEC §10.2)", () => {
   });
 
   it("maps a nonzero process exit without a result line to process_exit", async () => {
-    const { command, workspace } = await fakeCopilot("exit 5");
+    const { command, workspace } = await makeMockAgent(
+      "process.exit(5);",
+      "baton-cp-",
+    );
     const r = runner(command);
     const session = await r.startSession(workspace);
     const result = await r.runTurn(session, "x", () => {});
@@ -166,7 +162,10 @@ describe("CopilotRunner.runTurn JSONL parsing (SPEC §10.2)", () => {
   });
 
   it("enforces the turn timeout (SPEC §10.3)", async () => {
-    const { command, workspace } = await fakeCopilot("sleep 30");
+    const { command, workspace } = await makeMockAgent(
+      "setTimeout(() => {}, 30000);",
+      "baton-cp-",
+    );
     const r = runner(command, { turn_timeout_ms: 300 });
     const session = await r.startSession(workspace);
     const start = Date.now();
@@ -177,7 +176,10 @@ describe("CopilotRunner.runTurn JSONL parsing (SPEC §10.2)", () => {
   });
 
   it("rejects oversized prompts before launching the CLI (argv guard)", async () => {
-    const { command, workspace } = await fakeCopilot("exit 0");
+    const { command, workspace } = await makeMockAgent(
+      "process.exit(0);",
+      "baton-cp-",
+    );
     const r = runner(command);
     const session = await r.startSession(workspace);
     const huge = "a".repeat(200 * 1024);
@@ -189,17 +191,15 @@ describe("CopilotRunner.runTurn JSONL parsing (SPEC §10.2)", () => {
   });
 
   it("resumes the same session id on continuation turns (SPEC §10.1, §17.5)", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "baton-cp-"));
+    const { dir, workspace } = await mockAgentDir("baton-cp-");
     const argsLog = join(dir, "args.log");
-    const command = join(dir, "fake-copilot");
-    await writeFile(
-      command,
-      `#!/usr/bin/env bash\necho "$@" >> ${argsLog}\n` +
-        `echo '{"type":"result","exitCode":0,"sessionId":"x"}'\n`,
+    const command = await writeMockAgent(
+      dir,
+      [
+        `require("fs").appendFileSync(${JSON.stringify(argsLog)}, process.argv.slice(2).join(" ") + "\\n");`,
+        `process.stdout.write('{"type":"result","exitCode":0,"sessionId":"x"}\\n');`,
+      ].join("\n"),
     );
-    await chmod(command, 0o755);
-    const workspace = join(dir, "ws");
-    await mkdir(workspace);
 
     const r = runner(command);
     const session = await r.startSession(workspace);
@@ -223,28 +223,24 @@ describe("CopilotRunner.runTurn JSONL parsing (SPEC §10.2)", () => {
   });
 
   it("falls back to a fresh session when --resume fails on a continuation turn (SPEC §10.2)", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "baton-cp-"));
+    const { dir, workspace } = await mockAgentDir("baton-cp-");
     const argsLog = join(dir, "args.log");
-    const command = join(dir, "fake-copilot");
-    // Fail (exit 1) when --resume is present, succeed otherwise. Logs argv on
-    // every invocation so the test can verify the retry uses --session-id.
-    await writeFile(
-      command,
-      `#!/usr/bin/env bash
-echo "$@" >> ${argsLog}
-for arg in "$@"; do
-  if [ "$arg" = "--resume" ]; then
-    echo '{"type":"result","exitCode":1,"sessionId":"x"}'
-    exit 0
-  fi
-done
-echo '{"type":"result","exitCode":0,"sessionId":"x"}'
-exit 0
-`,
+    // Fail (exit 0 with error result) when --resume is present, succeed
+    // otherwise. Logs argv on every invocation so the test can verify the
+    // retry uses --session-id.
+    const command = await writeMockAgent(
+      dir,
+      [
+        `const args = process.argv.slice(2);`,
+        `require("fs").appendFileSync(${JSON.stringify(argsLog)}, args.join(" ") + "\\n");`,
+        `if (args.includes("--resume")) {`,
+        `  process.stdout.write('{"type":"result","exitCode":1,"sessionId":"x"}\\n');`,
+        `  process.exit(0);`,
+        `}`,
+        `process.stdout.write('{"type":"result","exitCode":0,"sessionId":"x"}\\n');`,
+        `process.exit(0);`,
+      ].join("\n"),
     );
-    await chmod(command, 0o755);
-    const workspace = join(dir, "ws");
-    await mkdir(workspace);
 
     const r = runner(command);
     const session = await r.startSession(workspace);

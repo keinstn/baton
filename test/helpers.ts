@@ -1,3 +1,6 @@
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { type BatonConfig, buildConfig } from "../src/config/schema.js";
 import { Logger } from "../src/observability/logger.js";
 import type { Issue } from "../src/tracker/types.js";
@@ -43,3 +46,39 @@ export function makeConfig(
 }
 
 export const silentLogger = new Logger({}, () => {});
+
+/** Create a fresh temp dir plus a `ws` workspace subdir for a mock agent. */
+export async function mockAgentDir(
+  prefix = "baton-mock-",
+): Promise<{ dir: string; workspace: string }> {
+  const dir = await mkdtemp(join(tmpdir(), prefix));
+  const workspace = join(dir, "ws");
+  await mkdir(workspace);
+  return { dir, workspace };
+}
+
+/**
+ * Write a CommonJS node script that stands in for an agent CLI, and return the
+ * `command` string to run it. Using `node <script>` keeps mocks cross-platform
+ * (no `#!/usr/bin/env bash` shebang, which Windows cannot execute). The path is
+ * quoted so it survives splitCommand even if it contains spaces; `.cjs` forces
+ * CommonJS regardless of any ambient package.json.
+ */
+export async function writeMockAgent(
+  dir: string,
+  body: string,
+): Promise<string> {
+  const file = join(dir, "mock.cjs");
+  await writeFile(file, body);
+  return `node "${file}"`;
+}
+
+/** Convenience: create the dir/workspace and write the mock body in one call. */
+export async function makeMockAgent(
+  body: string,
+  prefix = "baton-mock-",
+): Promise<{ command: string; workspace: string; dir: string }> {
+  const { dir, workspace } = await mockAgentDir(prefix);
+  const command = await writeMockAgent(dir, body);
+  return { command, workspace, dir };
+}
