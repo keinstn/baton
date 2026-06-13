@@ -73,24 +73,38 @@ describe("normalizeCommandForBash", () => {
 });
 
 describe("stopSessionProcess", () => {
-  it("keeps the process handle until a running process actually exits", () => {
+  it("waits for a running process to finish closing before clearing the handle", async () => {
     const proc = {
       pid: undefined,
       exitCode: null,
       kill: vi.fn(),
     } as unknown as ChildProcess;
+    let releaseClose = () => {};
+    const procClosed = new Promise<void>((resolve) => {
+      releaseClose = resolve;
+    });
     const session = {
       workspace: "/tmp/ws",
       agentSessionId: null,
       proc,
+      procClosed,
       turnNumber: 0,
     };
-    stopSessionProcess(session);
+    let settled = false;
+    const stopping = stopSessionProcess(session).then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
     expect(proc.kill).toHaveBeenCalledWith("SIGKILL");
     expect(session.proc).toBe(proc);
+    expect(settled).toBe(false);
+    releaseClose();
+    await stopping;
+    expect(session.proc).toBeNull();
+    expect(session.procClosed).toBeNull();
   });
 
-  it("clears the process handle once the child has already exited", () => {
+  it("clears the process handle once the child has already exited", async () => {
     const proc = {
       pid: undefined,
       exitCode: 0,
@@ -100,10 +114,12 @@ describe("stopSessionProcess", () => {
       workspace: "/tmp/ws",
       agentSessionId: null,
       proc,
+      procClosed: Promise.resolve(),
       turnNumber: 0,
     };
-    stopSessionProcess(session);
+    await stopSessionProcess(session);
     expect(proc.kill).not.toHaveBeenCalled();
     expect(session.proc).toBeNull();
+    expect(session.procClosed).toBeNull();
   });
 });

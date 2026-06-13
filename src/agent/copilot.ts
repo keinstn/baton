@@ -91,7 +91,13 @@ export class CopilotRunner implements AgentRunner {
 
   async startSession(workspace: string): Promise<AgentSession> {
     await ensureWorkspaceDir(workspace);
-    return { workspace, agentSessionId: null, proc: null, turnNumber: 0 };
+    return {
+      workspace,
+      agentSessionId: null,
+      proc: null,
+      procClosed: null,
+      turnNumber: 0,
+    };
   }
 
   async runTurn(
@@ -282,7 +288,7 @@ export class CopilotRunner implements AgentRunner {
   }
 
   async stopSession(session: AgentSession): Promise<void> {
-    stopSessionProcess(session);
+    await stopSessionProcess(session);
   }
 }
 

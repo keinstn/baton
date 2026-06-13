@@ -24,7 +24,13 @@ class FakeRunner implements AgentRunner {
 
   async startSession(workspace: string): Promise<AgentSession> {
     this.calls.push("start");
-    return { workspace, agentSessionId: "sess-1", proc: null, turnNumber: 0 };
+    return {
+      workspace,
+      agentSessionId: "sess-1",
+      proc: null,
+      procClosed: null,
+      turnNumber: 0,
+    };
   }
 
   async runTurn(

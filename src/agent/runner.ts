@@ -26,6 +26,10 @@ export interface AgentSession {
   workspace: string;
   agentSessionId: string | null;
   proc: ChildProcess | null;
+  /** Resolves when the current subprocess has fully exited or the OS confirms
+   *  it has been terminated. Used so stopSession() can await real shutdown
+   *  before after_run hooks or workspace cleanup proceed. */
+  procClosed: Promise<void> | null;
   /** Count of turns already run on this session; the adapter increments it
    *  before each turn so continuation turns resume and skip session_started
    *  (SPEC §10.1). */

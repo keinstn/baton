@@ -51,6 +51,25 @@ export function killWindowsTree(pid: number, onError: () => void): void {
   });
 }
 
+function killWindowsTreeAndWait(
+  pid: number,
+  onError: () => void,
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    const tk = spawn("taskkill", ["/F", "/T", "/PID", String(pid)], {
+      stdio: "ignore",
+    });
+    tk.on("error", () => {
+      onError();
+      resolve(false);
+    });
+    tk.on("close", (code) => {
+      if (code !== 0) onError();
+      resolve(code === 0);
+    });
+  });
+}
+
 /**
  * Kill the agent's whole process tree. On Unix, signal the process group
  * (requires spawn with detached: true); on Windows, `taskkill /T` by PID, since
@@ -91,15 +110,29 @@ export async function ensureWorkspaceDir(workspace: string): Promise<void> {
   }
 }
 
-/** Terminate a session's process tree if it is still running. */
-export function stopSessionProcess(session: AgentSession): void {
+/** Terminate a session's process tree and wait until shutdown is confirmed. */
+export async function stopSessionProcess(session: AgentSession): Promise<void> {
   const proc = session.proc;
+  const procClosed = session.procClosed;
   if (!proc) return;
   if (proc.exitCode !== null) {
     session.proc = null;
+    session.procClosed = null;
     return;
   }
-  killProcessTree(proc);
+  if (process.platform === "win32" && proc.pid !== undefined) {
+    const confirmedKilled = await killWindowsTreeAndWait(proc.pid, () =>
+      proc.kill("SIGKILL"),
+    );
+    if (!confirmedKilled && procClosed) {
+      await procClosed;
+    }
+  } else {
+    killProcessTree(proc);
+    if (procClosed) await procClosed;
+  }
+  if (session.proc === proc) session.proc = null;
+  if (session.procClosed === procClosed) session.procClosed = null;
 }
 
 export interface RunSubprocessOptions {
@@ -148,6 +181,10 @@ export function runSubprocess(
           detached: true,
         });
     session.proc = proc;
+    let resolveProcClosed = () => {};
+    session.procClosed = new Promise<void>((resolve) => {
+      resolveProcClosed = resolve;
+    });
 
     opts.logger?.debug("subprocess spawned", {
       pid: proc.pid,
@@ -179,6 +216,10 @@ export function runSubprocess(
     let timeoutGraceTimer: NodeJS.Timeout | null = null;
     const clearProcessRef = () => {
       if (session.proc === proc) session.proc = null;
+      if (session.procClosed) {
+        resolveProcClosed();
+        session.procClosed = null;
+      }
     };
     const clearResources = () => {
       clearTimeout(timer);
