@@ -119,7 +119,10 @@ function optPosInt(v: unknown, name: string): number | undefined {
  * string → bash -lc (backward-compatible shell command);
  * string[] → direct spawn with no shell (Windows-native, safe for paths with spaces).
  */
-function parseCommand(v: unknown, defaultValue: string): string | string[] {
+function parseCommand(
+  v: unknown,
+  defaultValue: string | string[],
+): string | string[] {
   if (Array.isArray(v)) {
     const arr = strList(v);
     if (arr !== null && arr.length > 0) return arr;
@@ -255,7 +258,7 @@ export function buildConfig(
 
   const cc = section(raw, "claude_code");
   const claudeCode: ClaudeCodeConfig = {
-    command: parseCommand(cc.command, "claude"),
+    command: parseCommand(cc.command, ["claude"]),
     model: str(cc.model),
     permissionMode: str(cc.permission_mode) ?? "acceptEdits",
     allowedTools: strList(cc.allowed_tools) ?? [],
@@ -270,7 +273,7 @@ export function buildConfig(
 
   const cp = section(raw, "copilot");
   const copilot: CopilotConfig = {
-    command: parseCommand(cp.command, "copilot"),
+    command: parseCommand(cp.command, ["copilot"]),
     model: str(cp.model),
     allowAllTools: cp.allow_all_tools === true,
     allowTools: strList(cp.allow_tools) ?? [],

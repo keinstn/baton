@@ -23,11 +23,11 @@ describe("buildConfig defaults (SPEC §6.4)", () => {
     expect(config.agent.maxConcurrentAgents).toBe(10);
     expect(config.agent.maxTurns).toBe(20);
     expect(config.agent.maxRetryBackoffMs).toBe(300000);
-    expect(config.claudeCode.command).toBe("claude");
+    expect(config.claudeCode.command).toEqual(["claude"]);
     expect(config.claudeCode.permissionMode).toBe("acceptEdits");
     expect(config.claudeCode.turnTimeoutMs).toBe(3600000);
     expect(config.claudeCode.stallTimeoutMs).toBe(300000);
-    expect(config.copilot.command).toBe("copilot");
+    expect(config.copilot.command).toEqual(["copilot"]);
     expect(config.copilot.allowAllTools).toBe(false);
   });
 });
@@ -76,10 +76,10 @@ describe("claude_code/copilot command parsing", () => {
     ]);
   });
 
-  it("defaults to string executable when command is absent", () => {
+  it("defaults to array command (direct-spawn path, no Git Bash needed)", () => {
     const config = makeConfig();
-    expect(config.claudeCode.command).toBe("claude");
-    expect(config.copilot.command).toBe("copilot");
+    expect(config.claudeCode.command).toEqual(["claude"]);
+    expect(config.copilot.command).toEqual(["copilot"]);
   });
 });
 

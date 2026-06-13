@@ -92,12 +92,15 @@ export function runSubprocess(
     // stdio tuples, which lets TypeScript infer non-null stdout/stderr types.
     let executable: string;
     let execArgs: string[];
+    let useShell = false;
     if (typeof opts.command === "string") {
       // Shell path: bash parses the command string (backward-compatible).
       executable = "bash";
       execArgs = ["-lc", opts.command];
     } else {
-      // Argv path: spawn the executable directly — no shell needed (SPEC §10.1).
+      // Argv path: spawn directly. On Windows, shell: true routes through
+      // cmd.exe so that .cmd/.bat shims (e.g. npm-installed claude.cmd) are
+      // resolved correctly (SPEC §10.1).
       const [first, ...rest] = opts.command;
       // Command is validated non-empty by validateDispatchConfig before dispatch.
       if (!first) {
@@ -106,17 +109,20 @@ export function runSubprocess(
       }
       executable = first;
       execArgs = rest;
+      useShell = isWindows;
     }
     const proc = useStdin
       ? spawn(executable, execArgs, {
           cwd: session.workspace,
           stdio: ["pipe", "pipe", "pipe"],
           detached: !isWindows,
+          shell: useShell,
         })
       : spawn(executable, execArgs, {
           cwd: session.workspace,
           stdio: ["ignore", "pipe", "pipe"],
           detached: !isWindows,
+          shell: useShell,
         });
     session.proc = proc;
 
