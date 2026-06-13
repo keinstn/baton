@@ -11,7 +11,10 @@ async function fakeClaude(
 ): Promise<{ command: string; workspace: string }> {
   const dir = await mkdtemp(join(tmpdir(), "baton-cc-"));
   const commandFs = join(dir, "fake-claude");
-  await writeFile(commandFs, `#!/usr/bin/env bash\ncat >/dev/null\n${script}\n`);
+  await writeFile(
+    commandFs,
+    `#!/usr/bin/env bash\ncat >/dev/null\n${script}\n`,
+  );
   await chmod(commandFs, 0o755);
   const workspace = join(dir, "ws");
   await (await import("node:fs/promises")).mkdir(workspace);

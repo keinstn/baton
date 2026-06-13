@@ -48,5 +48,7 @@ export const silentLogger = new Logger({}, () => {});
 export function toBashPath(p: string): string {
   if (process.platform !== "win32") return p;
   // C:\Users\foo → /c/Users/foo
-  return p.replace(/^([A-Za-z]):/, (_, d) => `/${d.toLowerCase()}`).replace(/\\/g, "/");
+  return p
+    .replace(/^([A-Za-z]):/, (_, d) => `/${d.toLowerCase()}`)
+    .replace(/\\/g, "/");
 }

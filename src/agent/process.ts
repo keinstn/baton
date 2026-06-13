@@ -18,9 +18,15 @@ export function shellQuote(s: string): string {
  * real `claude.exe` / `copilot.exe`). Best-effort; spawn errors fall back.
  */
 export function killWindowsTree(pid: number, onError: () => void): void {
-  spawn("taskkill", ["/F", "/T", "/PID", String(pid)], {
+  const tk = spawn("taskkill", ["/F", "/T", "/PID", String(pid)], {
     stdio: "ignore",
-  }).on("error", onError);
+  });
+  tk.on("error", onError);
+  // If taskkill exits non-zero the process was not killed; fall back so that
+  // proc.on("close") is guaranteed to fire and the runSubprocess Promise resolves.
+  tk.on("close", (code) => {
+    if (code !== 0) onError();
+  });
 }
 
 /**
