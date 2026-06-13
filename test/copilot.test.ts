@@ -42,70 +42,91 @@ echo '{"type":"result","exitCode":0,"sessionId":"abc","usage":{"premiumRequests"
 `;
 
 describe("CopilotRunner.buildCommand (SPEC §10.2)", () => {
-  it("includes JSONL output, no-ask-user, and pinned session id on first turn", () => {
-    const r = runner("copilot");
-    const cmd = r.buildCommand("hello", "uuid-1", false);
-    expect(Array.isArray(cmd)).toBe(true);
-    const joined = cmd.join(" ");
-    expect(joined).toContain("-p hello");
-    expect(joined).toContain("--output-format json");
-    expect(joined).toContain("--no-ask-user");
-    expect(joined).toContain("--session-id uuid-1");
-    expect(joined).not.toContain("--resume");
-  });
-
-  it("uses --resume on continuation turns instead of --session-id", () => {
-    const r = runner("copilot");
-    const cmd = r.buildCommand("p", "uuid-2", true).join(" ");
-    expect(cmd).toContain("--resume uuid-2");
-    expect(cmd).not.toContain("--session-id");
-  });
-
-  it("maps allow_all_tools / allow_tools / deny_tools / model / extra_args", () => {
-    const r = runner("copilot", {
-      allow_all_tools: true,
-      allow_tools: ["shell(gh)", "view"],
-      deny_tools: ["write"],
-      model: "claude-opus-4-7",
-      extra_args: ["--no-color"],
+  describe("string[] command (argv/direct-spawn path)", () => {
+    it("includes JSONL output, no-ask-user, and pinned session id on first turn", () => {
+      const r = runner(["copilot"]);
+      const cmd = r.buildCommand("hello", "uuid-1", false);
+      expect(Array.isArray(cmd)).toBe(true);
+      const joined = (cmd as string[]).join(" ");
+      expect(joined).toContain("-p hello");
+      expect(joined).toContain("--output-format json");
+      expect(joined).toContain("--no-ask-user");
+      expect(joined).toContain("--session-id uuid-1");
+      expect(joined).not.toContain("--resume");
     });
-    const cmd = r.buildCommand("p", "u", false).join(" ");
-    expect(cmd).toContain("--allow-all-tools");
-    expect(cmd).toContain("--allow-tool=shell(gh)");
-    expect(cmd).toContain("--allow-tool=view");
-    expect(cmd).toContain("--deny-tool=write");
-    expect(cmd).toContain("--model claude-opus-4-7");
-    expect(cmd).toContain("--no-color");
-  });
 
-  it("passes extra_args as literal argv elements (no shell quoting needed)", () => {
-    const r = runner("copilot", {
-      extra_args: ["--flag=hello world", "--other; rm -rf /"],
+    it("uses --resume on continuation turns instead of --session-id", () => {
+      const r = runner(["copilot"]);
+      const cmd = (r.buildCommand("p", "uuid-2", true) as string[]).join(" ");
+      expect(cmd).toContain("--resume uuid-2");
+      expect(cmd).not.toContain("--session-id");
     });
-    const cmd = r.buildCommand("p", "u", false);
-    expect(cmd).toContain("--flag=hello world");
-    expect(cmd).toContain("--other; rm -rf /");
+
+    it("maps allow_all_tools / allow_tools / deny_tools / model / extra_args", () => {
+      const r = runner(["copilot"], {
+        allow_all_tools: true,
+        allow_tools: ["shell(gh)", "view"],
+        deny_tools: ["write"],
+        model: "claude-opus-4-7",
+        extra_args: ["--no-color"],
+      });
+      const cmd = (r.buildCommand("p", "u", false) as string[]).join(" ");
+      expect(cmd).toContain("--allow-all-tools");
+      expect(cmd).toContain("--allow-tool=shell(gh)");
+      expect(cmd).toContain("--allow-tool=view");
+      expect(cmd).toContain("--deny-tool=write");
+      expect(cmd).toContain("--model claude-opus-4-7");
+      expect(cmd).toContain("--no-color");
+    });
+
+    it("passes extra_args as literal argv elements (no shell quoting)", () => {
+      const r = runner(["copilot"], {
+        extra_args: ["--flag=hello world", "--other; rm -rf /"],
+      });
+      const cmd = r.buildCommand("p", "u", false) as string[];
+      expect(cmd).toContain("--flag=hello world");
+      expect(cmd).toContain("--other; rm -rf /");
+    });
+
+    it("passes prompts with special characters as literal argv (no quoting)", () => {
+      const r = runner(["copilot"]);
+      const cmd = r.buildCommand("o'clock", "u", false) as string[];
+      expect(cmd).toContain("o'clock");
+    });
   });
 
-  it("passes prompts with special characters as literal argv (no quoting needed)", () => {
-    const r = runner("copilot");
-    const cmd = r.buildCommand("o'clock", "u", false);
-    expect(cmd).toContain("o'clock");
+  describe("string command (shell/bash -lc path)", () => {
+    it("returns a string with shell-quoted prompt and session id", () => {
+      const r = runner("copilot");
+      const cmd = r.buildCommand("o'clock", "uuid-1", false);
+      expect(typeof cmd).toBe("string");
+      expect(cmd).toContain("-p 'o'\\''clock'");
+      expect(cmd).toContain("--session-id 'uuid-1'");
+      expect(cmd).not.toContain("--resume");
+    });
+
+    it("shell-quotes --resume on continuation turns", () => {
+      const r = runner("copilot");
+      const cmd = r.buildCommand("p", "uuid-2", true);
+      expect(typeof cmd).toBe("string");
+      expect(cmd).toContain("--resume 'uuid-2'");
+      expect(cmd).not.toContain("--session-id");
+    });
   });
 });
 
 describe("CopilotRunner.applyConfig (SPEC §6.2 hot-reload)", () => {
   it("updates buildCommand output on the next call", () => {
-    const r = runner("copilot", { allow_all_tools: false });
-    expect(r.buildCommand("p", "u", false).join(" ")).not.toContain(
-      "--allow-all-tools",
-    );
+    const r = runner(["copilot"], { allow_all_tools: false });
+    expect(
+      (r.buildCommand("p", "u", false) as string[]).join(" "),
+    ).not.toContain("--allow-all-tools");
     const next = makeConfig({
       agent: { kind: "copilot" },
-      copilot: { command: "copilot", allow_all_tools: true, model: "gpt-x" },
+      copilot: { command: ["copilot"], allow_all_tools: true, model: "gpt-x" },
     });
     r.applyConfig(next.copilot);
-    const cmd = r.buildCommand("p", "u", false).join(" ");
+    const cmd = (r.buildCommand("p", "u", false) as string[]).join(" ");
     expect(cmd).toContain("--allow-all-tools");
     expect(cmd).toContain("--model gpt-x");
   });
@@ -113,7 +134,7 @@ describe("CopilotRunner.applyConfig (SPEC §6.2 hot-reload)", () => {
 
 describe("CopilotRunner.startSession (SPEC §9.5 Invariant 1)", () => {
   it("rejects a non-directory workspace cwd", async () => {
-    const r = runner("copilot");
+    const r = runner(["copilot"]);
     await expect(
       r.startSession("/nonexistent/workspace"),
     ).rejects.toMatchObject({ code: "invalid_workspace_cwd" });

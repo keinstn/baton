@@ -16,6 +16,10 @@ import type {
   TurnResult,
 } from "./runner.js";
 
+function shellQuote(s: string): string {
+  return `'${s.replace(/'/g, "'\\''")}'`;
+}
+
 /**
  * Default upper bound on prompt argv bytes. The GitHub Copilot CLI accepts
  * prompts only via `-p <text>` (no stdin input, no file flag), so prompts
@@ -50,39 +54,65 @@ export class CopilotRunner implements AgentRunner {
     this.cfg = cfg;
   }
 
-  /** Build the argv array for the agent process (SPEC §5.3.7).
-   *  `cfg.command` is the base argv. `sessionId` is always set;
-   *  `resume=true` resumes an existing session, `resume=false` creates a new one. */
-  buildCommand(prompt: string, sessionId: string, resume: boolean): string[] {
-    const parts: string[] = [
-      ...this.cfg.command,
-      "-p",
-      prompt,
-      "--output-format",
-      "json",
-      "--no-ask-user",
-      "--log-level",
-      "none",
-    ];
-    if (resume) {
-      parts.push("--resume", sessionId);
+  /**
+   * Build the command for the agent process (SPEC §5.3.7).
+   * Returns a shell string when cfg.command is a string (spawned via bash -lc),
+   * or a string[] argv when cfg.command is a string[] (spawned directly).
+   * `sessionId` is always set; `resume=true` resumes an existing session.
+   */
+  buildCommand(
+    prompt: string,
+    sessionId: string,
+    resume: boolean,
+  ): string | string[] {
+    if (typeof this.cfg.command === "string") {
+      const parts = [
+        this.cfg.command,
+        "-p",
+        shellQuote(prompt),
+        "--output-format",
+        "json",
+        "--no-ask-user",
+        "--log-level",
+        "none",
+      ];
+      if (resume) {
+        parts.push("--resume", shellQuote(sessionId));
+      } else {
+        parts.push("--session-id", shellQuote(sessionId));
+      }
+      if (this.cfg.allowAllTools) parts.push("--allow-all-tools");
+      for (const tool of this.cfg.allowTools)
+        parts.push(`--allow-tool=${shellQuote(tool)}`);
+      for (const tool of this.cfg.denyTools)
+        parts.push(`--deny-tool=${shellQuote(tool)}`);
+      if (this.cfg.model) parts.push("--model", shellQuote(this.cfg.model));
+      parts.push(...this.cfg.extraArgs.map(shellQuote));
+      return parts.join(" ");
     } else {
-      parts.push("--session-id", sessionId);
+      const parts: string[] = [
+        ...this.cfg.command,
+        "-p",
+        prompt,
+        "--output-format",
+        "json",
+        "--no-ask-user",
+        "--log-level",
+        "none",
+      ];
+      if (resume) {
+        parts.push("--resume", sessionId);
+      } else {
+        parts.push("--session-id", sessionId);
+      }
+      if (this.cfg.allowAllTools) parts.push("--allow-all-tools");
+      for (const tool of this.cfg.allowTools)
+        parts.push(`--allow-tool=${tool}`);
+      for (const tool of this.cfg.denyTools) parts.push(`--deny-tool=${tool}`);
+      if (this.cfg.model) parts.push("--model", this.cfg.model);
+      parts.push(...this.cfg.extraArgs);
+      return parts;
     }
-    if (this.cfg.allowAllTools) {
-      parts.push("--allow-all-tools");
-    }
-    for (const tool of this.cfg.allowTools) {
-      parts.push(`--allow-tool=${tool}`);
-    }
-    for (const tool of this.cfg.denyTools) {
-      parts.push(`--deny-tool=${tool}`);
-    }
-    if (this.cfg.model) {
-      parts.push("--model", this.cfg.model);
-    }
-    parts.push(...this.cfg.extraArgs);
-    return parts;
   }
 
   async startSession(workspace: string): Promise<AgentSession> {
@@ -148,7 +178,7 @@ export class CopilotRunner implements AgentRunner {
     // The Copilot CLI takes prompts via argv (no stdin), so stdio in is ignored.
     let sessionStartedEmitted = false;
     return runSubprocess(session, {
-      command: this.buildCommand(prompt, sessionId, resume), // string[] argv
+      command: this.buildCommand(prompt, sessionId, resume),
       timeoutMs: this.cfg.turnTimeoutMs,
       onEvent,
       onLine: (line) => {

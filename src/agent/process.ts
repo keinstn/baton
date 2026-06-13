@@ -53,8 +53,8 @@ export function stopSessionProcess(session: AgentSession): void {
 }
 
 export interface RunSubprocessOptions {
-  /** Argv array: [executable, ...args]. Spawned directly — no shell wrapper. */
-  command: string[];
+  /** Shell command string (spawned via bash -lc) or argv array (spawned directly). */
+  command: string | string[];
   /** Per-turn timeout; on expiry the whole process tree is killed (SPEC §10.3). */
   timeoutMs: number;
   /** When set, written to the child's stdin then closed; otherwise stdin is ignored. */
@@ -67,10 +67,14 @@ export interface RunSubprocessOptions {
 }
 
 /**
- * Run one agent process: spawn the executable directly (no shell wrapper),
- * stream stdout lines through `onLine`, enforce the turn timeout, and normalize
- * the exit into a TurnResult. Shared by the Claude Code and Copilot adapters
- * (SPEC §10.1, §10.2); only command construction and line parsing differ.
+ * Run one agent process, stream stdout lines through `onLine`, enforce the
+ * turn timeout, and normalize the exit into a TurnResult. Shared by the
+ * Claude Code and Copilot adapters (SPEC §10.1, §10.2); only command
+ * construction and line parsing differ.
+ *
+ * When `command` is a string it is executed via `bash -lc` (backward-
+ * compatible shell path). When it is a string[] the executable is spawned
+ * directly with no shell wrapper (Windows-native path).
  *
  * The spawned process is stored on `session.proc` so stopSession can terminate
  * it, and cleared once the process closes.
@@ -81,22 +85,35 @@ export function runSubprocess(
 ): Promise<TurnResult> {
   return new Promise((resolvePromise) => {
     const useStdin = opts.stdin !== undefined;
-    const [executable, ...args] = opts.command;
-    // Command is validated non-empty by validateDispatchConfig before dispatch.
-    if (!executable) {
-      resolvePromise({ ok: false, error: "startup_failed: empty command" });
-      return;
-    }
     // detached: own process group on Unix so killProcessTree can kill the
     // whole agent subtree via -pid. On Windows taskkill handles tree kill, so
     // detached is not needed.
+    // Resolve the executable + args so the spawn ternary below can use literal
+    // stdio tuples, which lets TypeScript infer non-null stdout/stderr types.
+    let executable: string;
+    let execArgs: string[];
+    if (typeof opts.command === "string") {
+      // Shell path: bash parses the command string (backward-compatible).
+      executable = "bash";
+      execArgs = ["-lc", opts.command];
+    } else {
+      // Argv path: spawn the executable directly — no shell needed (SPEC §10.1).
+      const [first, ...rest] = opts.command;
+      // Command is validated non-empty by validateDispatchConfig before dispatch.
+      if (!first) {
+        resolvePromise({ ok: false, error: "startup_failed: empty command" });
+        return;
+      }
+      executable = first;
+      execArgs = rest;
+    }
     const proc = useStdin
-      ? spawn(executable, args, {
+      ? spawn(executable, execArgs, {
           cwd: session.workspace,
           stdio: ["pipe", "pipe", "pipe"],
           detached: !isWindows,
         })
-      : spawn(executable, args, {
+      : spawn(executable, execArgs, {
           cwd: session.workspace,
           stdio: ["ignore", "pipe", "pipe"],
           detached: !isWindows,
@@ -105,7 +122,9 @@ export function runSubprocess(
 
     opts.logger?.debug("subprocess spawned", {
       pid: proc.pid,
-      executable,
+      ...(typeof opts.command === "string"
+        ? { command: opts.command }
+        : { executable }),
       workspace: session.workspace,
     });
 

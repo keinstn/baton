@@ -40,49 +40,74 @@ echo '{"type":"result","subtype":"success","is_error":false,"result":"done","usa
 `;
 
 describe("buildCommand (SPEC §10.1)", () => {
-  it("includes stream-json output and the documented permission posture", () => {
-    const r = runner("claude", {
-      permission_mode: "acceptEdits",
-      allowed_tools: ["Bash(gh:*)", "Edit"],
-      disallowed_tools: ["WebSearch"],
-      model: "claude-opus-4-8",
+  describe("string[] command (argv/direct-spawn path)", () => {
+    it("includes stream-json output and the documented permission posture", () => {
+      const r = runner(["claude"], {
+        permission_mode: "acceptEdits",
+        allowed_tools: ["Bash(gh:*)", "Edit"],
+        disallowed_tools: ["WebSearch"],
+        model: "claude-opus-4-8",
+      });
+      const cmd = r.buildCommand().join(" ");
+      expect(cmd).toContain("-p --output-format stream-json --verbose");
+      expect(cmd).toContain("--permission-mode acceptEdits");
+      expect(cmd).toContain("--allowedTools Bash(gh:*),Edit");
+      expect(cmd).toContain("--disallowedTools WebSearch");
+      expect(cmd).toContain("--model claude-opus-4-8");
     });
-    const cmd = r.buildCommand().join(" ");
-    expect(cmd).toContain("-p --output-format stream-json --verbose");
-    expect(cmd).toContain("--permission-mode acceptEdits");
-    expect(cmd).toContain("--allowedTools Bash(gh:*),Edit");
-    expect(cmd).toContain("--disallowedTools WebSearch");
-    expect(cmd).toContain("--model claude-opus-4-8");
+
+    it("adds --resume only when a session id is supplied (SPEC §10.1)", () => {
+      const r = runner(["claude"]);
+      expect(r.buildCommand("sess-9").join(" ")).toContain("--resume sess-9");
+      expect(r.buildCommand(null).join(" ")).not.toContain("--resume");
+      expect(r.buildCommand().join(" ")).not.toContain("--resume");
+    });
+
+    it("returns a string[] argv with no shell quoting", () => {
+      const r = runner(["claude"], { permission_mode: "acceptEdits" });
+      const cmd = r.buildCommand();
+      expect(Array.isArray(cmd)).toBe(true);
+      expect(cmd).toContain("--permission-mode");
+      expect(cmd).toContain("acceptEdits");
+      expect(cmd.join(" ")).not.toContain("'acceptEdits'");
+    });
   });
 
-  it("adds --resume only when a session id is supplied (SPEC §10.1)", () => {
-    const r = runner("claude");
-    expect(r.buildCommand("sess-9").join(" ")).toContain("--resume sess-9");
-    expect(r.buildCommand(null).join(" ")).not.toContain("--resume");
-    expect(r.buildCommand().join(" ")).not.toContain("--resume");
-  });
+  describe("string command (shell/bash -lc path)", () => {
+    it("returns a string with shell-quoted values", () => {
+      const r = runner("claude", {
+        permission_mode: "acceptEdits",
+        model: "claude-opus-4-8",
+        append_system_prompt: "it's a test",
+      });
+      const cmd = r.buildCommand();
+      expect(typeof cmd).toBe("string");
+      expect(cmd).toContain("-p --output-format stream-json --verbose");
+      expect(cmd).toContain("--permission-mode 'acceptEdits'");
+      expect(cmd).toContain("--model 'claude-opus-4-8'");
+      // Single quotes in values are escaped via shellQuote
+      expect(cmd).toContain("--append-system-prompt 'it'\\''s a test'");
+    });
 
-  it("returns a string[] argv (no shell quoting)", () => {
-    const r = runner("claude", { permission_mode: "acceptEdits" });
-    const cmd = r.buildCommand();
-    expect(Array.isArray(cmd)).toBe(true);
-    expect(cmd).toContain("--permission-mode");
-    expect(cmd).toContain("acceptEdits");
-    // Values must not be shell-quoted.
-    expect(cmd.join(" ")).not.toContain("'acceptEdits'");
+    it("shell-quotes --resume when session id is supplied", () => {
+      const r = runner("claude");
+      const cmd = r.buildCommand("sess-9");
+      expect(typeof cmd).toBe("string");
+      expect(cmd).toContain("--resume 'sess-9'");
+    });
   });
 });
 
 describe("applyConfig (SPEC §6.2 hot-reload)", () => {
   it("updates buildCommand output on the next call", () => {
-    const r = runner("claude", { permission_mode: "acceptEdits" });
+    const r = runner(["claude"], { permission_mode: "acceptEdits" });
     expect(r.buildCommand().join(" ")).toContain(
       "--permission-mode acceptEdits",
     );
 
     const updatedConfig = makeConfig({
       claude_code: {
-        command: "claude",
+        command: ["claude"],
         permission_mode: "bypassPermissions",
         model: "claude-haiku-4-5",
       },

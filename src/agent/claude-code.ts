@@ -18,6 +18,10 @@ import type {
   TurnResult,
 } from "./runner.js";
 
+function shellQuote(s: string): string {
+  return `'${s.replace(/'/g, "'\\''")}'`;
+}
+
 /**
  * Claude Code adapter, CLI subprocess mode (SPEC §10.1).
  *
@@ -36,36 +40,63 @@ export class ClaudeCodeRunner implements AgentRunner {
     this.cfg = cfg;
   }
 
-  /** Build the argv array for the agent process (SPEC §5.3.6).
-   *  `cfg.command` is the base argv (executable + any initial flags).
-   *  A non-null `resumeId` adds `--resume` so continuation turns reuse the session. */
-  buildCommand(resumeId?: string | null): string[] {
-    const parts: string[] = [
-      ...this.cfg.command,
-      "-p",
-      "--output-format",
-      "stream-json",
-      "--verbose",
-      "--permission-mode",
-      this.cfg.permissionMode,
-    ];
-    if (resumeId) {
-      parts.push("--resume", resumeId);
+  /**
+   * Build the command for the agent process (SPEC §5.3.6).
+   * Returns a shell string when cfg.command is a string (spawned via bash -lc),
+   * or a string[] argv when cfg.command is a string[] (spawned directly).
+   * A non-null `resumeId` adds `--resume` so continuation turns reuse the session.
+   */
+  buildCommand(resumeId?: string | null): string | string[] {
+    if (typeof this.cfg.command === "string") {
+      const parts = [
+        this.cfg.command,
+        "-p",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--permission-mode",
+        shellQuote(this.cfg.permissionMode),
+      ];
+      if (resumeId) parts.push("--resume", shellQuote(resumeId));
+      if (this.cfg.model) parts.push("--model", shellQuote(this.cfg.model));
+      if (this.cfg.allowedTools.length > 0)
+        parts.push(
+          "--allowedTools",
+          shellQuote(this.cfg.allowedTools.join(",")),
+        );
+      if (this.cfg.disallowedTools.length > 0)
+        parts.push(
+          "--disallowedTools",
+          shellQuote(this.cfg.disallowedTools.join(",")),
+        );
+      if (this.cfg.appendSystemPrompt)
+        parts.push(
+          "--append-system-prompt",
+          shellQuote(this.cfg.appendSystemPrompt),
+        );
+      parts.push(...this.cfg.extraArgs.map(shellQuote));
+      return parts.join(" ");
+    } else {
+      const parts: string[] = [
+        ...this.cfg.command,
+        "-p",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--permission-mode",
+        this.cfg.permissionMode,
+      ];
+      if (resumeId) parts.push("--resume", resumeId);
+      if (this.cfg.model) parts.push("--model", this.cfg.model);
+      if (this.cfg.allowedTools.length > 0)
+        parts.push("--allowedTools", this.cfg.allowedTools.join(","));
+      if (this.cfg.disallowedTools.length > 0)
+        parts.push("--disallowedTools", this.cfg.disallowedTools.join(","));
+      if (this.cfg.appendSystemPrompt)
+        parts.push("--append-system-prompt", this.cfg.appendSystemPrompt);
+      parts.push(...this.cfg.extraArgs);
+      return parts;
     }
-    if (this.cfg.model) {
-      parts.push("--model", this.cfg.model);
-    }
-    if (this.cfg.allowedTools.length > 0) {
-      parts.push("--allowedTools", this.cfg.allowedTools.join(","));
-    }
-    if (this.cfg.disallowedTools.length > 0) {
-      parts.push("--disallowedTools", this.cfg.disallowedTools.join(","));
-    }
-    if (this.cfg.appendSystemPrompt) {
-      parts.push("--append-system-prompt", this.cfg.appendSystemPrompt);
-    }
-    parts.push(...this.cfg.extraArgs);
-    return parts;
   }
 
   async startSession(workspace: string): Promise<AgentSession> {
@@ -84,7 +115,7 @@ export class ClaudeCodeRunner implements AgentRunner {
     const resumeId = session.turnNumber > 1 ? session.agentSessionId : null;
     // Prompt is delivered on stdin to avoid argv length limits (SPEC §10.1).
     return runSubprocess(session, {
-      command: this.buildCommand(resumeId), // string[] argv
+      command: this.buildCommand(resumeId),
       timeoutMs: this.cfg.turnTimeoutMs,
       stdin: prompt,
       onEvent,
