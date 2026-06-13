@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   CopilotRunner,
   computeWindowsArgvPromptMaxBytes,
+  computeWindowsShellPromptMaxBytes,
 } from "../src/agent/copilot.js";
 import { escapeWindowsCmdArg } from "../src/agent/process.js";
 import type { AgentEvent } from "../src/agent/runner.js";
@@ -66,6 +67,14 @@ describe("Windows command helpers", () => {
       "123e4567-e89b-12d3-a456-426614174000",
     ];
     const limit = computeWindowsArgvPromptMaxBytes(baseArgv);
+    expect(limit).toBeLessThan(16 * 1024);
+    expect(limit).toBeGreaterThan(1024);
+  });
+
+  it("uses a much smaller shell-command prompt budget for Windows bash launches", () => {
+    const limit = computeWindowsShellPromptMaxBytes(
+      "copilot -p '' --output-format json --no-ask-user --log-level none",
+    );
     expect(limit).toBeLessThan(16 * 1024);
     expect(limit).toBeGreaterThan(1024);
   });

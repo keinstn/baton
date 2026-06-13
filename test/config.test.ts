@@ -81,6 +81,14 @@ describe("claude_code/copilot command parsing", () => {
     expect(config.claudeCode.command).toEqual(["claude"]);
     expect(config.copilot.command).toEqual(["copilot"]);
   });
+
+  it("preserves explicit blank command values for validation instead of defaulting", () => {
+    const blankString = makeConfig({ claude_code: { command: "" } });
+    expect(blankString.claudeCode.command).toBe("");
+
+    const blankArray = makeConfig({ copilot: { command: [] } });
+    expect(blankArray.copilot.command).toEqual([]);
+  });
 });
 
 describe("workspace.root path handling (SPEC §5.3.3)", () => {
@@ -173,6 +181,15 @@ describe("validateDispatchConfig (SPEC §6.3)", () => {
   it("rejects a blank runner command (whitespace-only first element)", () => {
     const config = makeConfig();
     config.claudeCode.command = ["  "];
+    const codes = validateDispatchConfig(config).errors.map((e) => e.code);
+    expect(codes).toContain("missing_agent_command");
+  });
+
+  it("rejects explicit blank command config built from workflow input", () => {
+    const config = makeConfig({
+      claude_code: { command: "" },
+      copilot: { command: [] },
+    });
     const codes = validateDispatchConfig(config).errors.map((e) => e.code);
     expect(codes).toContain("missing_agent_command");
   });

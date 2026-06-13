@@ -123,14 +123,13 @@ function parseCommand(
   v: unknown,
   defaultValue: string | string[],
 ): string | string[] {
+  if (v === undefined || v === null) return defaultValue;
   if (Array.isArray(v)) {
     const arr = strList(v);
-    if (arr !== null && arr.length > 0) return arr;
-    return defaultValue;
+    return arr ?? [];
   }
   const s = str(v);
-  if (s !== null && s.trim() !== "") return s;
-  return defaultValue;
+  return s ?? "";
 }
 
 /** Any-integer field (stall_timeout_ms may be <= 0 to disable stall detection). */

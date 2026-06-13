@@ -26,6 +26,7 @@ const DEFAULT_PROMPT_MAX_BYTES = 128 * 1024;
 const WINDOWS_CMDLINE_MAX_BYTES = 8191;
 const WINDOWS_CMDLINE_SAFETY_BYTES = 512;
 const MIN_WINDOWS_PROMPT_MAX_BYTES = 1024;
+const WINDOWS_BASH_COMMAND_PREFIX = ["bash", "-lc"] as const;
 
 /**
  * Windows command dispatch is constrained by a much smaller command-line limit
@@ -38,6 +39,13 @@ export function computeWindowsArgvPromptMaxBytes(baseArgv: string[]): number {
     MIN_WINDOWS_PROMPT_MAX_BYTES,
     WINDOWS_CMDLINE_MAX_BYTES - WINDOWS_CMDLINE_SAFETY_BYTES - baseBytes,
   );
+}
+
+export function computeWindowsShellPromptMaxBytes(command: string): number {
+  return computeWindowsArgvPromptMaxBytes([
+    ...WINDOWS_BASH_COMMAND_PREFIX,
+    command,
+  ]);
 }
 
 /**
@@ -140,8 +148,13 @@ export class CopilotRunner implements AgentRunner {
   }
 
   private promptMaxBytes(sessionId: string, resume: boolean): number {
-    if (process.platform !== "win32" || typeof this.cfg.command === "string") {
+    if (process.platform !== "win32") {
       return DEFAULT_PROMPT_MAX_BYTES;
+    }
+    if (typeof this.cfg.command === "string") {
+      return computeWindowsShellPromptMaxBytes(
+        this.buildShellCommand("", sessionId, resume),
+      );
     }
     return computeWindowsArgvPromptMaxBytes(
       this.buildArgvCommand("", sessionId, resume),
