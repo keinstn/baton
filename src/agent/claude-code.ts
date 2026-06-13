@@ -43,56 +43,27 @@ export class ClaudeCodeRunner implements AgentRunner {
    * A non-null `resumeId` adds `--resume` so continuation turns reuse the session.
    */
   buildCommand(resumeId?: string | null): string | string[] {
-    if (typeof this.cfg.command === "string") {
-      const parts = [
-        this.cfg.command,
-        "-p",
-        "--output-format",
-        "stream-json",
-        "--verbose",
-        "--permission-mode",
-        shellQuote(this.cfg.permissionMode),
-      ];
-      if (resumeId) parts.push("--resume", shellQuote(resumeId));
-      if (this.cfg.model) parts.push("--model", shellQuote(this.cfg.model));
-      if (this.cfg.allowedTools.length > 0)
-        parts.push(
-          "--allowedTools",
-          shellQuote(this.cfg.allowedTools.join(",")),
-        );
-      if (this.cfg.disallowedTools.length > 0)
-        parts.push(
-          "--disallowedTools",
-          shellQuote(this.cfg.disallowedTools.join(",")),
-        );
-      if (this.cfg.appendSystemPrompt)
-        parts.push(
-          "--append-system-prompt",
-          shellQuote(this.cfg.appendSystemPrompt),
-        );
-      parts.push(...this.cfg.extraArgs.map(shellQuote));
-      return parts.join(" ");
-    } else {
-      const parts: string[] = [
-        ...this.cfg.command,
-        "-p",
-        "--output-format",
-        "stream-json",
-        "--verbose",
-        "--permission-mode",
-        this.cfg.permissionMode,
-      ];
-      if (resumeId) parts.push("--resume", resumeId);
-      if (this.cfg.model) parts.push("--model", this.cfg.model);
-      if (this.cfg.allowedTools.length > 0)
-        parts.push("--allowedTools", this.cfg.allowedTools.join(","));
-      if (this.cfg.disallowedTools.length > 0)
-        parts.push("--disallowedTools", this.cfg.disallowedTools.join(","));
-      if (this.cfg.appendSystemPrompt)
-        parts.push("--append-system-prompt", this.cfg.appendSystemPrompt);
-      parts.push(...this.cfg.extraArgs);
-      return parts;
-    }
+    const isShell = typeof this.cfg.command === "string";
+    const q = isShell ? shellQuote : (s: string) => s;
+    const parts = [
+      "-p",
+      "--output-format",
+      "stream-json",
+      "--verbose",
+      "--permission-mode",
+      q(this.cfg.permissionMode),
+    ];
+    if (resumeId) parts.push("--resume", q(resumeId));
+    if (this.cfg.model) parts.push("--model", q(this.cfg.model));
+    if (this.cfg.allowedTools.length > 0)
+      parts.push("--allowedTools", q(this.cfg.allowedTools.join(",")));
+    if (this.cfg.disallowedTools.length > 0)
+      parts.push("--disallowedTools", q(this.cfg.disallowedTools.join(",")));
+    if (this.cfg.appendSystemPrompt)
+      parts.push("--append-system-prompt", q(this.cfg.appendSystemPrompt));
+    parts.push(...this.cfg.extraArgs.map(q));
+    if (isShell) return [this.cfg.command as string, ...parts].join(" ");
+    return [...(this.cfg.command as string[]), ...parts];
   }
 
   async startSession(workspace: string): Promise<AgentSession> {

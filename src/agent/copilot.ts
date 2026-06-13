@@ -61,54 +61,30 @@ export class CopilotRunner implements AgentRunner {
     sessionId: string,
     resume: boolean,
   ): string | string[] {
-    if (typeof this.cfg.command === "string") {
-      const parts = [
-        this.cfg.command,
-        "-p",
-        shellQuote(prompt),
-        "--output-format",
-        "json",
-        "--no-ask-user",
-        "--log-level",
-        "none",
-      ];
-      if (resume) {
-        parts.push("--resume", shellQuote(sessionId));
-      } else {
-        parts.push("--session-id", shellQuote(sessionId));
-      }
-      if (this.cfg.allowAllTools) parts.push("--allow-all-tools");
-      for (const tool of this.cfg.allowTools)
-        parts.push(`--allow-tool=${shellQuote(tool)}`);
-      for (const tool of this.cfg.denyTools)
-        parts.push(`--deny-tool=${shellQuote(tool)}`);
-      if (this.cfg.model) parts.push("--model", shellQuote(this.cfg.model));
-      parts.push(...this.cfg.extraArgs.map(shellQuote));
-      return parts.join(" ");
+    const isShell = typeof this.cfg.command === "string";
+    const q = isShell ? shellQuote : (s: string) => s;
+    const parts = [
+      "-p",
+      q(prompt),
+      "--output-format",
+      "json",
+      "--no-ask-user",
+      "--log-level",
+      "none",
+    ];
+    if (resume) {
+      parts.push("--resume", q(sessionId));
     } else {
-      const parts: string[] = [
-        ...this.cfg.command,
-        "-p",
-        prompt,
-        "--output-format",
-        "json",
-        "--no-ask-user",
-        "--log-level",
-        "none",
-      ];
-      if (resume) {
-        parts.push("--resume", sessionId);
-      } else {
-        parts.push("--session-id", sessionId);
-      }
-      if (this.cfg.allowAllTools) parts.push("--allow-all-tools");
-      for (const tool of this.cfg.allowTools)
-        parts.push(`--allow-tool=${tool}`);
-      for (const tool of this.cfg.denyTools) parts.push(`--deny-tool=${tool}`);
-      if (this.cfg.model) parts.push("--model", this.cfg.model);
-      parts.push(...this.cfg.extraArgs);
-      return parts;
+      parts.push("--session-id", q(sessionId));
     }
+    if (this.cfg.allowAllTools) parts.push("--allow-all-tools");
+    for (const tool of this.cfg.allowTools)
+      parts.push(`--allow-tool=${q(tool)}`);
+    for (const tool of this.cfg.denyTools) parts.push(`--deny-tool=${q(tool)}`);
+    if (this.cfg.model) parts.push("--model", q(this.cfg.model));
+    parts.push(...this.cfg.extraArgs.map(q));
+    if (isShell) return [this.cfg.command as string, ...parts].join(" ");
+    return [...(this.cfg.command as string[]), ...parts];
   }
 
   async startSession(workspace: string): Promise<AgentSession> {
