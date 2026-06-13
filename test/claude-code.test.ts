@@ -2,23 +2,26 @@ import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { ClaudeCodeRunner, shellQuote } from "../src/agent/claude-code.js";
+import { ClaudeCodeRunner } from "../src/agent/claude-code.js";
 import type { AgentEvent } from "../src/agent/runner.js";
 import { makeConfig } from "./helpers.js";
 
+const isWindows = process.platform === "win32";
+
+/** Creates a bash-script fake claude and returns { command: string[], workspace }. */
 async function fakeClaude(
   script: string,
-): Promise<{ command: string; workspace: string }> {
+): Promise<{ command: string[]; workspace: string }> {
   const dir = await mkdtemp(join(tmpdir(), "baton-cc-"));
-  const command = join(dir, "fake-claude");
-  await writeFile(command, `#!/usr/bin/env bash\ncat >/dev/null\n${script}\n`);
-  await chmod(command, 0o755);
+  const scriptPath = join(dir, "fake-claude");
+  await writeFile(scriptPath, `#!/usr/bin/env bash\ncat >/dev/null\n${script}\n`);
+  await chmod(scriptPath, 0o755);
   const workspace = join(dir, "ws");
-  await (await import("node:fs/promises")).mkdir(workspace);
-  return { command, workspace };
+  await mkdir(workspace);
+  return { command: [scriptPath], workspace };
 }
 
-function runner(command: string, overrides: Record<string, unknown> = {}) {
+function runner(command: string | string[], overrides: Record<string, unknown> = {}) {
   const config = makeConfig({ claude_code: { command, ...overrides } });
   return new ClaudeCodeRunner(config.claudeCode);
 }
@@ -30,13 +33,6 @@ echo 'this is not json'
 echo '{"type":"result","subtype":"success","is_error":false,"result":"done","usage":{"input_tokens":10,"output_tokens":5}}'
 `;
 
-describe("shellQuote", () => {
-  it("quotes shell metacharacters safely", () => {
-    expect(shellQuote("simple")).toBe("'simple'");
-    expect(shellQuote("a'b")).toBe("'a'\\''b'");
-  });
-});
-
 describe("buildCommand (SPEC §10.1)", () => {
   it("includes stream-json output and the documented permission posture", () => {
     const r = runner("claude", {
@@ -45,26 +41,36 @@ describe("buildCommand (SPEC §10.1)", () => {
       disallowed_tools: ["WebSearch"],
       model: "claude-opus-4-8",
     });
-    const cmd = r.buildCommand();
+    const cmd = r.buildCommand().join(" ");
     expect(cmd).toContain("-p --output-format stream-json --verbose");
-    expect(cmd).toContain("--permission-mode 'acceptEdits'");
-    expect(cmd).toContain("--allowedTools 'Bash(gh:*),Edit'");
-    expect(cmd).toContain("--disallowedTools 'WebSearch'");
-    expect(cmd).toContain("--model 'claude-opus-4-8'");
+    expect(cmd).toContain("--permission-mode acceptEdits");
+    expect(cmd).toContain("--allowedTools Bash(gh:*),Edit");
+    expect(cmd).toContain("--disallowedTools WebSearch");
+    expect(cmd).toContain("--model claude-opus-4-8");
   });
 
   it("adds --resume only when a session id is supplied (SPEC §10.1)", () => {
     const r = runner("claude");
-    expect(r.buildCommand("sess-9")).toContain("--resume 'sess-9'");
-    expect(r.buildCommand(null)).not.toContain("--resume");
-    expect(r.buildCommand()).not.toContain("--resume");
+    expect(r.buildCommand("sess-9").join(" ")).toContain("--resume sess-9");
+    expect(r.buildCommand(null).join(" ")).not.toContain("--resume");
+    expect(r.buildCommand().join(" ")).not.toContain("--resume");
+  });
+
+  it("returns a string[] argv (no shell quoting)", () => {
+    const r = runner("claude", { permission_mode: "acceptEdits" });
+    const cmd = r.buildCommand();
+    expect(Array.isArray(cmd)).toBe(true);
+    expect(cmd).toContain("--permission-mode");
+    expect(cmd).toContain("acceptEdits");
+    // Values must not be shell-quoted.
+    expect(cmd.join(" ")).not.toContain("'acceptEdits'");
   });
 });
 
 describe("applyConfig (SPEC §6.2 hot-reload)", () => {
   it("updates buildCommand output on the next call", () => {
     const r = runner("claude", { permission_mode: "acceptEdits" });
-    expect(r.buildCommand()).toContain("--permission-mode 'acceptEdits'");
+    expect(r.buildCommand().join(" ")).toContain("--permission-mode acceptEdits");
 
     const updatedConfig = makeConfig({
       claude_code: {
@@ -75,9 +81,9 @@ describe("applyConfig (SPEC §6.2 hot-reload)", () => {
     });
     r.applyConfig(updatedConfig.claudeCode);
 
-    const cmd = r.buildCommand();
-    expect(cmd).toContain("--permission-mode 'bypassPermissions'");
-    expect(cmd).toContain("--model 'claude-haiku-4-5'");
+    const cmd = r.buildCommand().join(" ");
+    expect(cmd).toContain("--permission-mode bypassPermissions");
+    expect(cmd).toContain("--model claude-haiku-4-5");
   });
 });
 
@@ -92,7 +98,7 @@ describe("startSession (SPEC §9.5 Invariant 1)", () => {
   });
 });
 
-describe("runTurn stream-json parsing (SPEC §10.1)", () => {
+describe.skipIf(isWindows)("runTurn stream-json parsing (SPEC §10.1)", () => {
   it("parses a successful turn: session id, events, usage", async () => {
     const { command, workspace } = await fakeClaude(SUCCESS_SCRIPT);
     const r = runner(command);
@@ -150,18 +156,18 @@ describe("runTurn stream-json parsing (SPEC §10.1)", () => {
   it("resumes the session on continuation turns and emits session_started once (SPEC §10.1, §17.5)", async () => {
     const dir = await mkdtemp(join(tmpdir(), "baton-cc-"));
     const argsLog = join(dir, "args.log");
-    const command = join(dir, "fake-claude");
+    const scriptPath = join(dir, "fake-claude");
     await writeFile(
-      command,
+      scriptPath,
       `#!/usr/bin/env bash\ncat >/dev/null\necho "$@" >> ${argsLog}\n` +
         `echo '{"type":"system","subtype":"init","session_id":"sess-xyz"}'\n` +
         `echo '{"type":"result","subtype":"success","is_error":false,"result":"ok"}'\n`,
     );
-    await chmod(command, 0o755);
+    await chmod(scriptPath, 0o755);
     const workspace = join(dir, "ws");
     await mkdir(workspace);
 
-    const r = runner(command);
+    const r = runner([scriptPath]);
     const session = await r.startSession(workspace);
     const first: AgentEvent[] = [];
     await r.runTurn(session, "first turn", (e) => first.push(e));

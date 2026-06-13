@@ -27,7 +27,8 @@ export interface AgentConfig {
 }
 
 export interface ClaudeCodeConfig {
-  command: string;
+  /** Executable argv prefix — e.g. ["claude"] or ["/path with spaces/claude"]. */
+  command: string[];
   model: string | null;
   permissionMode: string;
   allowedTools: string[];
@@ -39,7 +40,8 @@ export interface ClaudeCodeConfig {
 }
 
 export interface CopilotConfig {
-  command: string;
+  /** Executable argv prefix — e.g. ["copilot"] or ["/path/to/copilot"]. */
+  command: string[];
   model: string | null;
   allowAllTools: boolean;
   allowTools: string[];
@@ -112,6 +114,19 @@ function optPosInt(v: unknown, name: string): number | undefined {
   );
 }
 
+/** Parse a command field: string → split on whitespace; string[] → as-is; else default. */
+function parseCommand(v: unknown, defaultValue: string): string[] {
+  if (Array.isArray(v)) {
+    const arr = strList(v);
+    if (arr !== null && arr.length > 0) return arr;
+    return [defaultValue];
+  }
+  const s = str(v);
+  if (s === null) return [defaultValue];
+  const tokens = s.trim().split(/\s+/).filter(Boolean);
+  return tokens.length > 0 ? tokens : [defaultValue];
+}
+
 /** Any-integer field (stall_timeout_ms may be <= 0 to disable stall detection). */
 function optInt(v: unknown, name: string): number | undefined {
   if (v === undefined || v === null) return undefined;
@@ -154,8 +169,11 @@ export function expandPath(
     );
   }
   let v = resolved;
-  if (v === "~" || v.startsWith("~/")) {
-    v = path.join(os.homedir(), v.slice(1));
+  if (v === "~") {
+    v = os.homedir();
+  } else if (v.startsWith("~/") || v.startsWith("~\\")) {
+    // slice(2) removes the "~/" prefix so path.join receives a relative segment.
+    v = path.join(os.homedir(), v.slice(2));
   }
   return path.resolve(baseDir, v);
 }
@@ -234,7 +252,7 @@ export function buildConfig(
 
   const cc = section(raw, "claude_code");
   const claudeCode: ClaudeCodeConfig = {
-    command: str(cc.command) ?? "claude",
+    command: parseCommand(cc.command, "claude"),
     model: str(cc.model),
     permissionMode: str(cc.permission_mode) ?? "acceptEdits",
     allowedTools: strList(cc.allowed_tools) ?? [],
@@ -249,7 +267,7 @@ export function buildConfig(
 
   const cp = section(raw, "copilot");
   const copilot: CopilotConfig = {
-    command: str(cp.command) ?? "copilot",
+    command: parseCommand(cp.command, "copilot"),
     model: str(cp.model),
     allowAllTools: cp.allow_all_tools === true,
     allowTools: strList(cp.allow_tools) ?? [],
@@ -341,7 +359,7 @@ export function validateDispatchConfig(config: BatonConfig): ValidationResult {
       agent.kind === "claude_code"
         ? config.claudeCode.command
         : config.copilot.command;
-    if (!command || command.trim() === "") {
+    if (command.length === 0 || command[0].trim() === "") {
       errors.push({
         code: "missing_agent_command",
         message: `${agent.kind}.command must be present and non-empty`,

@@ -6,19 +6,21 @@ import { CopilotRunner } from "../src/agent/copilot.js";
 import type { AgentEvent } from "../src/agent/runner.js";
 import { makeConfig } from "./helpers.js";
 
+const isWindows = process.platform === "win32";
+
 async function fakeCopilot(
   script: string,
-): Promise<{ command: string; workspace: string; dir: string }> {
+): Promise<{ command: string[]; workspace: string; dir: string }> {
   const dir = await mkdtemp(join(tmpdir(), "baton-cp-"));
-  const command = join(dir, "fake-copilot");
-  await writeFile(command, `#!/usr/bin/env bash\n${script}\n`);
-  await chmod(command, 0o755);
+  const scriptPath = join(dir, "fake-copilot");
+  await writeFile(scriptPath, `#!/usr/bin/env bash\n${script}\n`);
+  await chmod(scriptPath, 0o755);
   const workspace = join(dir, "ws");
   await mkdir(workspace);
-  return { command, workspace, dir };
+  return { command: [scriptPath], workspace, dir };
 }
 
-function runner(command: string, overrides: Record<string, unknown> = {}) {
+function runner(command: string | string[], overrides: Record<string, unknown> = {}) {
   const config = makeConfig({
     agent: { kind: "copilot" },
     copilot: { command, ...overrides },
@@ -40,17 +42,19 @@ describe("CopilotRunner.buildCommand (SPEC §10.2)", () => {
   it("includes JSONL output, no-ask-user, and pinned session id on first turn", () => {
     const r = runner("copilot");
     const cmd = r.buildCommand("hello", "uuid-1", false);
-    expect(cmd).toContain("copilot -p 'hello'");
-    expect(cmd).toContain("--output-format json");
-    expect(cmd).toContain("--no-ask-user");
-    expect(cmd).toContain("--session-id 'uuid-1'");
-    expect(cmd).not.toContain("--resume");
+    expect(Array.isArray(cmd)).toBe(true);
+    const joined = cmd.join(" ");
+    expect(joined).toContain("-p hello");
+    expect(joined).toContain("--output-format json");
+    expect(joined).toContain("--no-ask-user");
+    expect(joined).toContain("--session-id uuid-1");
+    expect(joined).not.toContain("--resume");
   });
 
   it("uses --resume on continuation turns instead of --session-id", () => {
     const r = runner("copilot");
-    const cmd = r.buildCommand("p", "uuid-2", true);
-    expect(cmd).toContain("--resume 'uuid-2'");
+    const cmd = r.buildCommand("p", "uuid-2", true).join(" ");
+    expect(cmd).toContain("--resume uuid-2");
     expect(cmd).not.toContain("--session-id");
   });
 
@@ -62,46 +66,43 @@ describe("CopilotRunner.buildCommand (SPEC §10.2)", () => {
       model: "claude-opus-4-7",
       extra_args: ["--no-color"],
     });
-    const cmd = r.buildCommand("p", "u", false);
+    const cmd = r.buildCommand("p", "u", false).join(" ");
     expect(cmd).toContain("--allow-all-tools");
-    expect(cmd).toContain("--allow-tool='shell(gh)'");
-    expect(cmd).toContain("--allow-tool='view'");
-    expect(cmd).toContain("--deny-tool='write'");
-    expect(cmd).toContain("--model 'claude-opus-4-7'");
-    expect(cmd).toContain("'--no-color'");
+    expect(cmd).toContain("--allow-tool=shell(gh)");
+    expect(cmd).toContain("--allow-tool=view");
+    expect(cmd).toContain("--deny-tool=write");
+    expect(cmd).toContain("--model claude-opus-4-7");
+    expect(cmd).toContain("--no-color");
   });
 
-  it("shell-quotes extra_args elements to prevent injection", () => {
+  it("passes extra_args as literal argv elements (no shell quoting needed)", () => {
     const r = runner("copilot", {
       extra_args: ["--flag=hello world", "--other; rm -rf /"],
     });
     const cmd = r.buildCommand("p", "u", false);
-    // Each element must be wrapped in single quotes (no raw spaces or semicolons).
-    expect(cmd).toContain("'--flag=hello world'");
-    expect(cmd).toContain("'--other; rm -rf /'");
-    // Must not appear unquoted.
-    expect(cmd).not.toMatch(/[^']--other; rm/);
+    expect(cmd).toContain("--flag=hello world");
+    expect(cmd).toContain("--other; rm -rf /");
   });
 
-  it("safely shell-quotes prompts containing single quotes", () => {
+  it("passes prompts with special characters as literal argv (no quoting needed)", () => {
     const r = runner("copilot");
     const cmd = r.buildCommand("o'clock", "u", false);
-    expect(cmd).toContain("-p 'o'\\''clock'");
+    expect(cmd).toContain("o'clock");
   });
 });
 
 describe("CopilotRunner.applyConfig (SPEC §6.2 hot-reload)", () => {
   it("updates buildCommand output on the next call", () => {
     const r = runner("copilot", { allow_all_tools: false });
-    expect(r.buildCommand("p", "u", false)).not.toContain("--allow-all-tools");
+    expect(r.buildCommand("p", "u", false).join(" ")).not.toContain("--allow-all-tools");
     const next = makeConfig({
       agent: { kind: "copilot" },
       copilot: { command: "copilot", allow_all_tools: true, model: "gpt-x" },
     });
     r.applyConfig(next.copilot);
-    const cmd = r.buildCommand("p", "u", false);
+    const cmd = r.buildCommand("p", "u", false).join(" ");
     expect(cmd).toContain("--allow-all-tools");
-    expect(cmd).toContain("--model 'gpt-x'");
+    expect(cmd).toContain("--model gpt-x");
   });
 });
 
@@ -114,7 +115,7 @@ describe("CopilotRunner.startSession (SPEC §9.5 Invariant 1)", () => {
   });
 });
 
-describe("CopilotRunner.runTurn JSONL parsing (SPEC §10.2)", () => {
+describe.skipIf(isWindows)("CopilotRunner.runTurn JSONL parsing (SPEC §10.2)", () => {
   it("parses a successful turn: session_started, events, zero usage", async () => {
     const { command, workspace } = await fakeCopilot(SUCCESS_SCRIPT);
     const r = runner(command);
@@ -191,17 +192,17 @@ describe("CopilotRunner.runTurn JSONL parsing (SPEC §10.2)", () => {
   it("resumes the same session id on continuation turns (SPEC §10.1, §17.5)", async () => {
     const dir = await mkdtemp(join(tmpdir(), "baton-cp-"));
     const argsLog = join(dir, "args.log");
-    const command = join(dir, "fake-copilot");
+    const scriptPath = join(dir, "fake-copilot");
     await writeFile(
-      command,
+      scriptPath,
       `#!/usr/bin/env bash\necho "$@" >> ${argsLog}\n` +
         `echo '{"type":"result","exitCode":0,"sessionId":"x"}'\n`,
     );
-    await chmod(command, 0o755);
+    await chmod(scriptPath, 0o755);
     const workspace = join(dir, "ws");
     await mkdir(workspace);
 
-    const r = runner(command);
+    const r = runner([scriptPath]);
     const session = await r.startSession(workspace);
     const first: AgentEvent[] = [];
     await r.runTurn(session, "first", (e) => first.push(e));
@@ -225,11 +226,11 @@ describe("CopilotRunner.runTurn JSONL parsing (SPEC §10.2)", () => {
   it("falls back to a fresh session when --resume fails on a continuation turn (SPEC §10.2)", async () => {
     const dir = await mkdtemp(join(tmpdir(), "baton-cp-"));
     const argsLog = join(dir, "args.log");
-    const command = join(dir, "fake-copilot");
+    const scriptPath = join(dir, "fake-copilot");
     // Fail (exit 1) when --resume is present, succeed otherwise. Logs argv on
     // every invocation so the test can verify the retry uses --session-id.
     await writeFile(
-      command,
+      scriptPath,
       `#!/usr/bin/env bash
 echo "$@" >> ${argsLog}
 for arg in "$@"; do
@@ -242,11 +243,11 @@ echo '{"type":"result","exitCode":0,"sessionId":"x"}'
 exit 0
 `,
     );
-    await chmod(command, 0o755);
+    await chmod(scriptPath, 0o755);
     const workspace = join(dir, "ws");
     await mkdir(workspace);
 
-    const r = runner(command);
+    const r = runner([scriptPath]);
     const session = await r.startSession(workspace);
     await r.runTurn(session, "first", () => {});
     const firstUuid = session.agentSessionId;

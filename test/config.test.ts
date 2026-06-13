@@ -23,11 +23,11 @@ describe("buildConfig defaults (SPEC §6.4)", () => {
     expect(config.agent.maxConcurrentAgents).toBe(10);
     expect(config.agent.maxTurns).toBe(20);
     expect(config.agent.maxRetryBackoffMs).toBe(300000);
-    expect(config.claudeCode.command).toBe("claude");
+    expect(config.claudeCode.command).toEqual(["claude"]);
     expect(config.claudeCode.permissionMode).toBe("acceptEdits");
     expect(config.claudeCode.turnTimeoutMs).toBe(3600000);
     expect(config.claudeCode.stallTimeoutMs).toBe(300000);
-    expect(config.copilot.command).toBe("copilot");
+    expect(config.copilot.command).toEqual(["copilot"]);
     expect(config.copilot.allowAllTools).toBe(false);
   });
 });
@@ -55,6 +55,26 @@ describe("$VAR resolution (SPEC §6.1)", () => {
       MY_PAT: "pat",
     });
     expect(config.tracker.token).toBe("pat");
+  });
+});
+
+describe("claude_code/copilot command parsing", () => {
+  it("parses a string command by splitting on whitespace", () => {
+    const config = makeConfig({ claude_code: { command: "claude --no-color" } });
+    expect(config.claudeCode.command).toEqual(["claude", "--no-color"]);
+  });
+
+  it("accepts a string[] command as-is (preserves paths with spaces)", () => {
+    const config = makeConfig({
+      claude_code: { command: ["/path with spaces/claude", "--flag"] },
+    });
+    expect(config.claudeCode.command).toEqual(["/path with spaces/claude", "--flag"]);
+  });
+
+  it("defaults to [executable] when command is absent", () => {
+    const config = makeConfig();
+    expect(config.claudeCode.command).toEqual(["claude"]);
+    expect(config.copilot.command).toEqual(["copilot"]);
   });
 });
 
@@ -130,9 +150,16 @@ describe("validateDispatchConfig (SPEC §6.3)", () => {
     expect(codes).toContain("unsupported_agent_kind");
   });
 
-  it("rejects a blank runner command", () => {
+  it("rejects a blank runner command (empty array)", () => {
     const config = makeConfig();
-    config.claudeCode.command = "  ";
+    config.claudeCode.command = [];
+    const codes = validateDispatchConfig(config).errors.map((e) => e.code);
+    expect(codes).toContain("missing_agent_command");
+  });
+
+  it("rejects a blank runner command (whitespace-only first element)", () => {
+    const config = makeConfig();
+    config.claudeCode.command = ["  "];
     const codes = validateDispatchConfig(config).errors.map((e) => e.code);
     expect(codes).toContain("missing_agent_command");
   });

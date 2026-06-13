@@ -1,4 +1,4 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { stat } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { ERROR_MESSAGE_MAX_BYTES, STDERR_TAIL_BYTES } from "../constants.js";
@@ -7,14 +7,17 @@ import type { Logger } from "../observability/logger.js";
 import { now } from "../util.js";
 import type { AgentEventCallback, AgentSession, TurnResult } from "./runner.js";
 
-/** Quote a string for safe interpolation into a bash -lc command line. */
-export function shellQuote(s: string): string {
-  return `'${s.replace(/'/g, "'\\''")}'`;
-}
+const isWindows = process.platform === "win32";
 
-/** Kill the agent's whole process group (requires spawn with detached: true). */
+/** Kill the agent's whole process group.
+ *  Unix: kills the process group (requires spawn with detached: true).
+ *  Windows: uses taskkill /F /T to kill the full process tree. */
 export function killProcessTree(proc: ChildProcess): void {
   if (proc.pid !== undefined) {
+    if (isWindows) {
+      spawnSync("taskkill", ["/F", "/T", "/PID", String(proc.pid)]);
+      return;
+    }
     try {
       process.kill(-proc.pid, "SIGKILL");
       return;
@@ -50,8 +53,8 @@ export function stopSessionProcess(session: AgentSession): void {
 }
 
 export interface RunSubprocessOptions {
-  /** Full command line passed to `bash -lc`. */
-  command: string;
+  /** Argv array: [executable, ...args]. Spawned directly — no shell wrapper. */
+  command: string[];
   /** Per-turn timeout; on expiry the whole process tree is killed (SPEC §10.3). */
   timeoutMs: number;
   /** When set, written to the child's stdin then closed; otherwise stdin is ignored. */
@@ -64,7 +67,7 @@ export interface RunSubprocessOptions {
 }
 
 /**
- * Run one agent process: spawn `bash -lc <command>` in its own process group,
+ * Run one agent process: spawn the executable directly (no shell wrapper),
  * stream stdout lines through `onLine`, enforce the turn timeout, and normalize
  * the exit into a TurnResult. Shared by the Claude Code and Copilot adapters
  * (SPEC §10.1, §10.2); only command construction and line parsing differ.
@@ -78,25 +81,26 @@ export function runSubprocess(
 ): Promise<TurnResult> {
   return new Promise((resolvePromise) => {
     const useStdin = opts.stdin !== undefined;
-    // detached: own process group, so timeout/stop kills the whole agent
-    // process tree (not just the bash -lc wrapper). The stdio tuples are kept
-    // as literals so Node's typed overloads give non-null stdout/stderr.
+    const [executable, ...args] = opts.command;
+    // detached: own process group on Unix so killProcessTree can kill the
+    // whole agent subtree via -pid. On Windows taskkill handles tree kill, so
+    // detached is not needed.
     const proc = useStdin
-      ? spawn("bash", ["-lc", opts.command], {
+      ? spawn(executable, args, {
           cwd: session.workspace,
           stdio: ["pipe", "pipe", "pipe"],
-          detached: true,
+          detached: !isWindows,
         })
-      : spawn("bash", ["-lc", opts.command], {
+      : spawn(executable, args, {
           cwd: session.workspace,
           stdio: ["ignore", "pipe", "pipe"],
-          detached: true,
+          detached: !isWindows,
         });
     session.proc = proc;
 
     opts.logger?.debug("subprocess spawned", {
       pid: proc.pid,
-      executable: opts.command.split(" ")[0],
+      executable,
       workspace: session.workspace,
     });
 

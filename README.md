@@ -41,6 +41,17 @@ follows the Symphony spec unchanged.
   - `claude_code` → [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)
   - `copilot` → [GitHub Copilot CLI](https://githubnext.com/projects/copilot-cli)
 
+**Windows**
+
+Baton runs natively on Windows — no Git Bash required for basic operation. Agent
+processes are spawned directly (no shell wrapper), and the process tree is terminated
+with `taskkill /F /T` on timeout or stop.
+
+If you configure hooks (`after_create`, `before_run`, `after_run`, `before_remove`
+in your `WORKFLOW.md`), hooks are still executed via `bash -lc`. Install
+[Git for Windows](https://gitforwindows.org/) and ensure `bash` is on your `PATH`
+before using hooks on Windows.
+
 **Build from source**
 
 ```sh

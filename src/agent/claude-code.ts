@@ -8,7 +8,6 @@ import { now } from "../util.js";
 import {
   ensureWorkspaceDir,
   runSubprocess,
-  shellQuote,
   stopSessionProcess,
 } from "./process.js";
 import type {
@@ -18,9 +17,6 @@ import type {
   AgentSession,
   TurnResult,
 } from "./runner.js";
-
-// Re-exported for adapter authors and existing importers (e.g. copilot.ts, tests).
-export { shellQuote };
 
 /**
  * Claude Code adapter, CLI subprocess mode (SPEC §10.1).
@@ -40,41 +36,36 @@ export class ClaudeCodeRunner implements AgentRunner {
     this.cfg = cfg;
   }
 
-  /** Build the full shell command line. `cfg.command` is itself a shell string (SPEC §5.3.6).
+  /** Build the argv array for the agent process (SPEC §5.3.6).
+   *  `cfg.command` is the base argv (executable + any initial flags).
    *  A non-null `resumeId` adds `--resume` so continuation turns reuse the session. */
-  buildCommand(resumeId?: string | null): string {
+  buildCommand(resumeId?: string | null): string[] {
     const parts: string[] = [
-      this.cfg.command,
+      ...this.cfg.command,
       "-p",
       "--output-format",
       "stream-json",
       "--verbose",
       "--permission-mode",
-      shellQuote(this.cfg.permissionMode),
+      this.cfg.permissionMode,
     ];
     if (resumeId) {
-      parts.push("--resume", shellQuote(resumeId));
+      parts.push("--resume", resumeId);
     }
     if (this.cfg.model) {
-      parts.push("--model", shellQuote(this.cfg.model));
+      parts.push("--model", this.cfg.model);
     }
     if (this.cfg.allowedTools.length > 0) {
-      parts.push("--allowedTools", shellQuote(this.cfg.allowedTools.join(",")));
+      parts.push("--allowedTools", this.cfg.allowedTools.join(","));
     }
     if (this.cfg.disallowedTools.length > 0) {
-      parts.push(
-        "--disallowedTools",
-        shellQuote(this.cfg.disallowedTools.join(",")),
-      );
+      parts.push("--disallowedTools", this.cfg.disallowedTools.join(","));
     }
     if (this.cfg.appendSystemPrompt) {
-      parts.push(
-        "--append-system-prompt",
-        shellQuote(this.cfg.appendSystemPrompt),
-      );
+      parts.push("--append-system-prompt", this.cfg.appendSystemPrompt);
     }
     parts.push(...this.cfg.extraArgs);
-    return parts.join(" ");
+    return parts;
   }
 
   async startSession(workspace: string): Promise<AgentSession> {
@@ -93,7 +84,7 @@ export class ClaudeCodeRunner implements AgentRunner {
     const resumeId = session.turnNumber > 1 ? session.agentSessionId : null;
     // Prompt is delivered on stdin to avoid argv length limits (SPEC §10.1).
     return runSubprocess(session, {
-      command: this.buildCommand(resumeId),
+      command: this.buildCommand(resumeId),  // string[] argv
       timeoutMs: this.cfg.turnTimeoutMs,
       stdin: prompt,
       onEvent,

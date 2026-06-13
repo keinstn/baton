@@ -6,7 +6,6 @@ import { now } from "../util.js";
 import {
   ensureWorkspaceDir,
   runSubprocess,
-  shellQuote,
   stopSessionProcess,
 } from "./process.js";
 import type {
@@ -51,14 +50,14 @@ export class CopilotRunner implements AgentRunner {
     this.cfg = cfg;
   }
 
-  /** Build the full shell command line. `cfg.command` is itself a shell string
-   *  (SPEC §5.3.7). `sessionId` is always set; `resume=true` resumes an existing
-   *  session, `resume=false` creates a new session pinned to that id. */
-  buildCommand(prompt: string, sessionId: string, resume: boolean): string {
+  /** Build the argv array for the agent process (SPEC §5.3.7).
+   *  `cfg.command` is the base argv. `sessionId` is always set;
+   *  `resume=true` resumes an existing session, `resume=false` creates a new one. */
+  buildCommand(prompt: string, sessionId: string, resume: boolean): string[] {
     const parts: string[] = [
-      this.cfg.command,
+      ...this.cfg.command,
       "-p",
-      shellQuote(prompt),
+      prompt,
       "--output-format",
       "json",
       "--no-ask-user",
@@ -66,26 +65,24 @@ export class CopilotRunner implements AgentRunner {
       "none",
     ];
     if (resume) {
-      parts.push("--resume", shellQuote(sessionId));
+      parts.push("--resume", sessionId);
     } else {
-      parts.push("--session-id", shellQuote(sessionId));
+      parts.push("--session-id", sessionId);
     }
     if (this.cfg.allowAllTools) {
       parts.push("--allow-all-tools");
     }
     for (const tool of this.cfg.allowTools) {
-      parts.push(`--allow-tool=${shellQuote(tool)}`);
+      parts.push(`--allow-tool=${tool}`);
     }
     for (const tool of this.cfg.denyTools) {
-      parts.push(`--deny-tool=${shellQuote(tool)}`);
+      parts.push(`--deny-tool=${tool}`);
     }
     if (this.cfg.model) {
-      parts.push("--model", shellQuote(this.cfg.model));
+      parts.push("--model", this.cfg.model);
     }
-    for (const arg of this.cfg.extraArgs) {
-      parts.push(shellQuote(arg));
-    }
-    return parts.join(" ");
+    parts.push(...this.cfg.extraArgs);
+    return parts;
   }
 
   async startSession(workspace: string): Promise<AgentSession> {
@@ -148,11 +145,10 @@ export class CopilotRunner implements AgentRunner {
      *  emitted regardless of `session.turnNumber`. */
     isNewSession = false,
   ): Promise<TurnResult> {
-    const cmdline = this.buildCommand(prompt, sessionId, resume);
     // The Copilot CLI takes prompts via argv (no stdin), so stdio in is ignored.
     let sessionStartedEmitted = false;
     return runSubprocess(session, {
-      command: cmdline,
+      command: this.buildCommand(prompt, sessionId, resume),  // string[] argv
       timeoutMs: this.cfg.turnTimeoutMs,
       onEvent,
       onLine: (line) => {
