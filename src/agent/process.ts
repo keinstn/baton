@@ -82,6 +82,11 @@ export function runSubprocess(
   return new Promise((resolvePromise) => {
     const useStdin = opts.stdin !== undefined;
     const [executable, ...args] = opts.command;
+    // Command is validated non-empty by validateDispatchConfig before dispatch.
+    if (!executable) {
+      resolvePromise({ ok: false, error: "startup_failed: empty command" });
+      return;
+    }
     // detached: own process group on Unix so killProcessTree can kill the
     // whole agent subtree via -pid. On Windows taskkill handles tree kill, so
     // detached is not needed.

@@ -1,4 +1,6 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+
+const isWindows = process.platform === "win32";
 
 export interface HookResult {
   ok: boolean;
@@ -39,7 +41,13 @@ export function runHookScript(
 
     const timer = setTimeout(() => {
       timedOut = true;
-      proc.kill("SIGKILL");
+      // On Windows, kill the full process tree (bash + children) so the pipe
+      // handles held by child processes (e.g. sleep) are released immediately.
+      if (isWindows && proc.pid !== undefined) {
+        spawnSync("taskkill", ["/F", "/T", "/PID", String(proc.pid)]);
+      } else {
+        proc.kill("SIGKILL");
+      }
     }, opts.timeoutMs);
 
     proc.on("error", () => {
