@@ -6,7 +6,7 @@ import {
   sanitizeWorkspaceKey,
   WorkspaceManager,
 } from "../src/workspace/manager.js";
-import { makeConfig, makeIssue, silentLogger } from "./helpers.js";
+import { makeConfig, makeIssue, silentLogger, toBashPath } from "./helpers.js";
 
 async function tempRoot(): Promise<string> {
   return mkdtemp(join(tmpdir(), "baton-ws-"));
@@ -81,7 +81,7 @@ describe("workspace creation and hooks (SPEC §9.2, §9.4)", () => {
     });
     await m.createForIssue(makeIssue({ identifier: "repo-7", number: 7 }));
     const content = await readFile(join(root, "repo-7", "meta.txt"), "utf8");
-    expect(content.trim()).toBe(`repo-7:7:${join(root, "repo-7")}`);
+    expect(content.trim()).toBe(`repo-7:7:${toBashPath(join(root, "repo-7"))}`);
   });
 
   it("provides bash and native workspace paths for Windows hooks", async () => {
