@@ -43,3 +43,10 @@ export function makeConfig(
 }
 
 export const silentLogger = new Logger({}, () => {});
+
+/** Convert an absolute path to a POSIX path for use inside `bash -lc` strings on Windows (Git Bash). */
+export function toBashPath(p: string): string {
+  if (process.platform !== "win32") return p;
+  // C:\Users\foo → /c/Users/foo
+  return p.replace(/^([A-Za-z]):/, (_, d) => `/${d.toLowerCase()}`).replace(/\\/g, "/");
+}
