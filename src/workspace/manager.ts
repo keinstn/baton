@@ -1,11 +1,26 @@
 import { mkdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import type { BatonConfig } from "../config/schema.js";
 import { BatonError } from "../errors.js";
 import type { Logger } from "../observability/logger.js";
 import type { Issue } from "../tracker/types.js";
 import { toBashPath } from "../util.js";
 import { runHookScript } from "./hooks.js";
+
+const WORKSPACE_REMOVE_RETRY_MS = 100;
+const WORKSPACE_REMOVE_RETRY_WINDOW_MS = 5000;
+
+function isTransientWindowsRmError(err: unknown): boolean {
+  if (!(err instanceof Error) || !("code" in err)) return false;
+  const code = err.code;
+  return (
+    code === "EBUSY" ||
+    code === "EPERM" ||
+    code === "ENOTEMPTY" ||
+    code === "UNKNOWN"
+  );
+}
 
 /** SPEC §4.2 / §9.5 Invariant 3: only [A-Za-z0-9._-] in workspace names. */
 export function sanitizeWorkspaceKey(identifier: string): string {
@@ -77,6 +92,25 @@ export class WorkspaceManager {
     };
   }
 
+  private async removeWorkspaceDir(workspacePath: string): Promise<void> {
+    const deadline = Date.now() + WORKSPACE_REMOVE_RETRY_WINDOW_MS;
+    for (;;) {
+      try {
+        await rm(workspacePath, { recursive: true, force: true });
+        return;
+      } catch (err) {
+        if (
+          process.platform !== "win32" ||
+          !isTransientWindowsRmError(err) ||
+          Date.now() >= deadline
+        ) {
+          throw err;
+        }
+        await delay(WORKSPACE_REMOVE_RETRY_MS);
+      }
+    }
+  }
+
   /** Create or reuse the workspace for an issue (SPEC §9.2). */
   async createForIssue(issue: Issue): Promise<Workspace> {
     const workspacePath = this.pathFor(issue.identifier);
@@ -113,7 +147,7 @@ export class WorkspaceManager {
         if (!result.ok) {
           // SPEC §9.4: after_create failure is fatal to workspace creation;
           // remove the partially prepared directory (SPEC §9.3).
-          await rm(workspacePath, { recursive: true, force: true });
+          await this.removeWorkspaceDir(workspacePath);
           throw new BatonError(
             "hook_failed",
             `after_create hook failed (timedOut=${result.timedOut} code=${result.code}): ${result.output.slice(0, 500)}`,
@@ -181,7 +215,7 @@ export class WorkspaceManager {
         });
       }
     }
-    await rm(workspacePath, { recursive: true, force: true });
+    await this.removeWorkspaceDir(workspacePath);
     this.logger.info("workspace removed", {
       issue_identifier: issue.identifier,
       workspace: workspacePath,
