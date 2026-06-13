@@ -7,6 +7,7 @@ import type { Logger } from "../observability/logger.js";
 import { now } from "../util.js";
 import {
   ensureWorkspaceDir,
+  normalizeCommandForBash,
   runSubprocess,
   shellQuote,
   stopSessionProcess,
@@ -44,7 +45,7 @@ export class ClaudeCodeRunner implements AgentRunner {
    *  A non-null `resumeId` adds `--resume` so continuation turns reuse the session. */
   buildCommand(resumeId?: string | null): string {
     const parts: string[] = [
-      this.cfg.command,
+      normalizeCommandForBash(this.cfg.command),
       "-p",
       "--output-format",
       "stream-json",

@@ -77,11 +77,20 @@ describe("workspace creation and hooks (SPEC §9.2, §9.4)", () => {
     const root = await tempRoot();
     const m = manager(root, {
       after_create:
-        'echo "$BATON_ISSUE_IDENTIFIER:$BATON_ISSUE_NUMBER" > meta.txt',
+        'printf "%s:%s:%s" "$BATON_ISSUE_IDENTIFIER" "$BATON_ISSUE_NUMBER" "$BATON_WORKSPACE" > meta.txt',
     });
     await m.createForIssue(makeIssue({ identifier: "repo-7", number: 7 }));
     const content = await readFile(join(root, "repo-7", "meta.txt"), "utf8");
-    expect(content.trim()).toBe("repo-7:7");
+    expect(content.trim()).toBe(`repo-7:7:${join(root, "repo-7")}`);
+  });
+
+  it("provides bash and native workspace paths for Windows hooks", async () => {
+    const root = "C:\\baton\\workspaces";
+    const m = manager("/tmp");
+    expect(m.hookEnv(makeIssue(), `${root}\\repo-1`, "win32")).toMatchObject({
+      BATON_WORKSPACE: "/c/baton/workspaces/repo-1",
+      BATON_WORKSPACE_NATIVE: "C:\\baton\\workspaces\\repo-1",
+    });
   });
 
   it("after_create failure aborts creation and removes the directory", async () => {
@@ -150,7 +159,7 @@ describe("applyConfig (SPEC §6.2 hot-reload)", () => {
     const markerPath = join(root, "hook-ran");
     const updatedConfig = makeConfig({
       workspace: { root },
-      hooks: { after_create: `touch '${markerPath}'` },
+      hooks: { after_create: 'touch "$BATON_WORKSPACE/../hook-ran"' },
     });
     m.applyConfig(updatedConfig);
 

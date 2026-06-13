@@ -212,7 +212,10 @@ describe("worker attempt (SPEC §16)", () => {
     const hookLog = join(root, "hook_ran");
     const config = makeConfig({
       workspace: { root },
-      hooks: { before_run: `touch ${hookLog}`, after_run: `touch ${hookLog}` },
+      hooks: {
+        before_run: 'touch "$BATON_WORKSPACE/../hook_ran"',
+        after_run: 'touch "$BATON_WORKSPACE/../hook_ran"',
+      },
     });
     const workspaces = new WorkspaceManager(config, silentLogger);
     const runner = new FakeRunner();

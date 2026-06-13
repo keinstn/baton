@@ -5,6 +5,7 @@ import type { Logger } from "../observability/logger.js";
 import { now } from "../util.js";
 import {
   ensureWorkspaceDir,
+  normalizeCommandForBash,
   runSubprocess,
   shellQuote,
   stopSessionProcess,
@@ -56,7 +57,7 @@ export class CopilotRunner implements AgentRunner {
    *  session, `resume=false` creates a new session pinned to that id. */
   buildCommand(prompt: string, sessionId: string, resume: boolean): string {
     const parts: string[] = [
-      this.cfg.command,
+      normalizeCommandForBash(this.cfg.command),
       "-p",
       shellQuote(prompt),
       "--output-format",

@@ -4,6 +4,7 @@ import type { BatonConfig } from "../config/schema.js";
 import { BatonError } from "../errors.js";
 import type { Logger } from "../observability/logger.js";
 import type { Issue } from "../tracker/types.js";
+import { toBashPath } from "../util.js";
 import { runHookScript } from "./hooks.js";
 
 /** SPEC §4.2 / §9.5 Invariant 3: only [A-Za-z0-9._-] in workspace names. */
@@ -57,7 +58,11 @@ export class WorkspaceManager {
     return p;
   }
 
-  hookEnv(issue: Issue, workspacePath: string): Record<string, string> {
+  hookEnv(
+    issue: Issue,
+    workspacePath: string,
+    platform = process.platform,
+  ): Record<string, string> {
     return {
       BATON_ISSUE_ID: issue.id,
       BATON_ISSUE_IDENTIFIER: issue.identifier,
@@ -65,7 +70,10 @@ export class WorkspaceManager {
       BATON_ISSUE_REPO: issue.repository,
       BATON_ISSUE_URL: issue.url ?? "",
       BATON_ISSUE_STATUS: issue.state,
-      BATON_WORKSPACE: workspacePath,
+      BATON_WORKSPACE: toBashPath(workspacePath, platform),
+      ...(platform === "win32"
+        ? { BATON_WORKSPACE_NATIVE: workspacePath }
+        : {}),
     };
   }
 
