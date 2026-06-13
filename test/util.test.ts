@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
-import { normalizeCommandForBash } from "../src/agent/process.js";
+import type { ChildProcess } from "node:child_process";
+import { describe, expect, it, vi } from "vitest";
+import {
+  normalizeCommandForBash,
+  stopSessionProcess,
+} from "../src/agent/process.js";
 import { isRecord, norm, now, toBashPath } from "../src/util.js";
 
 describe("norm", () => {
@@ -65,5 +69,41 @@ describe("normalizeCommandForBash", () => {
     expect(
       normalizeCommandForBash("C:\\tools\\claude.exe --verbose", "win32"),
     ).toBe("C:\\tools\\claude.exe --verbose");
+  });
+});
+
+describe("stopSessionProcess", () => {
+  it("keeps the process handle until a running process actually exits", () => {
+    const proc = {
+      pid: undefined,
+      exitCode: null,
+      kill: vi.fn(),
+    } as unknown as ChildProcess;
+    const session = {
+      workspace: "/tmp/ws",
+      agentSessionId: null,
+      proc,
+      turnNumber: 0,
+    };
+    stopSessionProcess(session);
+    expect(proc.kill).toHaveBeenCalledWith("SIGKILL");
+    expect(session.proc).toBe(proc);
+  });
+
+  it("clears the process handle once the child has already exited", () => {
+    const proc = {
+      pid: undefined,
+      exitCode: 0,
+      kill: vi.fn(),
+    } as unknown as ChildProcess;
+    const session = {
+      workspace: "/tmp/ws",
+      agentSessionId: null,
+      proc,
+      turnNumber: 0,
+    };
+    stopSessionProcess(session);
+    expect(proc.kill).not.toHaveBeenCalled();
+    expect(session.proc).toBeNull();
   });
 });

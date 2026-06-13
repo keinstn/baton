@@ -93,10 +93,13 @@ export async function ensureWorkspaceDir(workspace: string): Promise<void> {
 
 /** Terminate a session's process tree if it is still running. */
 export function stopSessionProcess(session: AgentSession): void {
-  if (session.proc && session.proc.exitCode === null && !session.proc.killed) {
-    killProcessTree(session.proc);
+  const proc = session.proc;
+  if (!proc) return;
+  if (proc.exitCode !== null) {
+    session.proc = null;
+    return;
   }
-  session.proc = null;
+  killProcessTree(proc);
 }
 
 export interface RunSubprocessOptions {
@@ -174,14 +177,26 @@ export function runSubprocess(
     // call onEvent again (callbacks are not idempotent).
     let resolved = false;
     let timeoutGraceTimer: NodeJS.Timeout | null = null;
-    const resolveOnce = (value: TurnResult, emitTimeoutEvent = false) => {
+    const clearProcessRef = () => {
+      if (session.proc === proc) session.proc = null;
+    };
+    const clearResources = () => {
       clearTimeout(timer);
       if (timeoutGraceTimer) clearTimeout(timeoutGraceTimer);
+      rl.close();
+    };
+    const resolveOnce = (
+      value: TurnResult,
+      resolveOpts: {
+        emitTimeoutEvent?: boolean;
+        clearProcessRef?: boolean;
+      } = {},
+    ) => {
+      clearResources();
       if (resolved) return;
       resolved = true;
-      session.proc = null;
-      rl.close();
-      if (emitTimeoutEvent) {
+      if (resolveOpts.clearProcessRef !== false) clearProcessRef();
+      if (resolveOpts.emitTimeoutEvent) {
         opts.onEvent({
           event: "turn_cancelled",
           timestamp: now(),
@@ -195,12 +210,16 @@ export function runSubprocess(
       killProcessTree(proc);
       // Windows can occasionally delay or miss the child `close` event after a
       // forced tree kill. Resolve after a short grace period so timeout
-      // enforcement itself never hangs the worker or CI.
+      // enforcement itself never hangs the worker or CI. Keep session.proc so
+      // stopSession() can continue cleanup until the process actually closes.
       timeoutGraceTimer = setTimeout(() => {
         proc.stdout.destroy();
         proc.stderr.destroy();
         proc.unref();
-        resolveOnce({ ok: false, error: "turn_timeout" }, true);
+        resolveOnce(
+          { ok: false, error: "turn_timeout" },
+          { emitTimeoutEvent: true, clearProcessRef: false },
+        );
       }, TIMEOUT_KILL_GRACE_MS);
     }, opts.timeoutMs);
 
@@ -211,6 +230,9 @@ export function runSubprocess(
     });
 
     proc.on("error", (err) => {
+      clearResources();
+      clearProcessRef();
+      if (resolved) return;
       opts.logger?.debug("subprocess error", {
         pid: proc.pid,
         error: String(err),
@@ -218,7 +240,8 @@ export function runSubprocess(
       resolveOnce({ ok: false, error: `startup_failed: ${String(err)}` });
     });
     proc.on("close", (code) => {
-      if (resolved) return;
+      clearResources();
+      clearProcessRef();
       opts.logger?.debug("subprocess closed", {
         pid: proc.pid,
         exit_code: code,
@@ -227,8 +250,12 @@ export function runSubprocess(
           ? { stderr_tail: stderrTail.slice(-200) }
           : {}),
       });
+      if (resolved) return;
       if (timedOut) {
-        resolveOnce({ ok: false, error: "turn_timeout" }, true);
+        resolveOnce(
+          { ok: false, error: "turn_timeout" },
+          { emitTimeoutEvent: true },
+        );
       } else if (result) {
         resolveOnce(result);
       } else {

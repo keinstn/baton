@@ -10,7 +10,6 @@ export interface HookResult {
 }
 
 const MAX_OUTPUT_BYTES = 8 * 1024;
-const TIMEOUT_KILL_GRACE_MS = 1000;
 
 /**
  * Run a workspace hook script (SPEC §9.4): `bash -lc <script>` with the
@@ -30,7 +29,6 @@ export function runHookScript(
     let output = "";
     let timedOut = false;
     let resolved = false;
-    let timeoutGraceTimer: NodeJS.Timeout | null = null;
     const append = (chunk: Buffer) => {
       if (output.length < MAX_OUTPUT_BYTES) {
         output += chunk
@@ -40,10 +38,8 @@ export function runHookScript(
     };
     proc.stdout.on("data", append);
     proc.stderr.on("data", append);
-
     const resolveOnce = (result: HookResult) => {
       clearTimeout(timer);
-      if (timeoutGraceTimer) clearTimeout(timeoutGraceTimer);
       if (resolved) return;
       resolved = true;
       resolvePromise({ ...result, output: result.output.trim() });
@@ -58,12 +54,6 @@ export function runHookScript(
       } else {
         proc.kill("SIGKILL");
       }
-      timeoutGraceTimer = setTimeout(() => {
-        proc.stdout.destroy();
-        proc.stderr.destroy();
-        proc.unref();
-        resolveOnce({ ok: false, code: null, timedOut: true, output });
-      }, TIMEOUT_KILL_GRACE_MS);
     }, opts.timeoutMs);
 
     proc.on("error", () => {
