@@ -5,9 +5,11 @@ import { describe, expect, it } from "vitest";
 import {
   CopilotRunner,
   computeWindowsArgvPromptMaxBytes,
-  computeWindowsShellPromptMaxBytes,
 } from "../src/agent/copilot.js";
-import { escapeWindowsCmdArg } from "../src/agent/process.js";
+import {
+  countWindowsCommandUnits,
+  resolveWindowsCmdShim,
+} from "../src/agent/process.js";
 import type { AgentEvent } from "../src/agent/runner.js";
 import { makeConfig } from "./helpers.js";
 
@@ -47,9 +49,49 @@ echo '{"type":"result","exitCode":0,"sessionId":"abc","usage":{"premiumRequests"
 `;
 
 describe("Windows command helpers", () => {
-  it("escapes percent signs before routing argv through cmd.exe shims", () => {
-    expect(escapeWindowsCmdArg("show %PATH% and 100% done")).toBe(
-      "show %%PATH%% and 100%% done",
+  it("resolves npm-style cmd shims to a direct node executable launch", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "baton-cmd-"));
+    const shimDir = join(dir, "bin");
+    const targetDir = join(dir, "pkg");
+    await mkdir(shimDir);
+    await mkdir(targetDir);
+
+    const shimPath = join(shimDir, "copilot.cmd");
+    const nodeExe = join(shimDir, "node.exe");
+    const targetPath = join(targetDir, "cli.js");
+    await writeFile(nodeExe, "");
+    await writeFile(targetPath, "#!/usr/bin/env node\nconsole.log('ok')\n");
+    await writeFile(
+      shimPath,
+      [
+        "@ECHO off",
+        "GOTO start",
+        ":find_dp0",
+        "SET dp0=%~dp0",
+        "EXIT /b",
+        ":start",
+        "SETLOCAL",
+        "CALL :find_dp0",
+        'IF EXIST "%dp0%\\node.exe" (',
+        '  SET "_prog=%dp0%\\node.exe"',
+        ") ELSE (",
+        '  SET "_prog=node"',
+        "  SET PATHEXT=%PATHEXT:;.JS;=%",
+        ")",
+        'endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%" "%dp0%\\..\\pkg\\cli.js" %*',
+        "",
+      ].join("\r\n"),
+    );
+
+    const resolved = await resolveWindowsCmdShim(shimPath, ["--flag", "a&b"]);
+    expect(resolved).not.toBeNull();
+    expect(resolved?.executable).toBe(nodeExe);
+    expect(resolved?.execArgs).toEqual([targetPath, "--flag", "a&b"]);
+  });
+
+  it("counts Windows command length in string units rather than UTF-8 bytes", () => {
+    expect(countWindowsCommandUnits(["copilot", "-p", "あ".repeat(3)])).toBe(
+      "copilot -p あああ".length,
     );
   });
 
@@ -68,15 +110,7 @@ describe("Windows command helpers", () => {
     ];
     const limit = computeWindowsArgvPromptMaxBytes(baseArgv);
     expect(limit).toBeLessThan(16 * 1024);
-    expect(limit).toBeGreaterThan(1024);
-  });
-
-  it("uses a much smaller shell-command prompt budget for Windows bash launches", () => {
-    const limit = computeWindowsShellPromptMaxBytes(
-      "copilot -p '' --output-format json --no-ask-user --log-level none",
-    );
-    expect(limit).toBeLessThan(16 * 1024);
-    expect(limit).toBeGreaterThan(1024);
+    expect(limit).toBeGreaterThan("あ".repeat(3000).length);
   });
 });
 

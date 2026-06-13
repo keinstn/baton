@@ -4,7 +4,9 @@ import { DISPLAY_TEXT_MAX_BYTES } from "../constants.js";
 import type { Logger } from "../observability/logger.js";
 import { now, shellQuote } from "../util.js";
 import {
+  countWindowsCommandUnits,
   ensureWorkspaceDir,
+  resolveSubprocessCommand,
   runSubprocess,
   stopSessionProcess,
 } from "./process.js";
@@ -17,7 +19,7 @@ import type {
 } from "./runner.js";
 
 /**
- * Default upper bound on prompt argv bytes. The GitHub Copilot CLI accepts
+ * Default upper bound on prompt argv size. The GitHub Copilot CLI accepts
  * prompts only via `-p <text>` (no stdin input, no file flag), so prompts
  * larger than this fail the turn rather than risking ARG_MAX truncation
  * (typical kernel ARG_MAX is 256 KiB on macOS / 2 MiB on Linux).
@@ -26,26 +28,19 @@ const DEFAULT_PROMPT_MAX_BYTES = 128 * 1024;
 const WINDOWS_CMDLINE_MAX_BYTES = 8191;
 const WINDOWS_CMDLINE_SAFETY_BYTES = 512;
 const MIN_WINDOWS_PROMPT_MAX_BYTES = 1024;
-const WINDOWS_BASH_COMMAND_PREFIX = ["bash", "-lc"] as const;
 
 /**
  * Windows command dispatch is constrained by a much smaller command-line limit
- * than POSIX `ARG_MAX`, especially for npm-installed `.cmd` shims. Reserve a
- * safety margin for quoting/flags so oversized prompts fail before spawn.
+ * than POSIX `ARG_MAX`. Reserve a safety margin for quoting/flags so oversized
+ * prompts fail before spawn. The unit here is Windows command-string length,
+ * not UTF-8 byte length.
  */
 export function computeWindowsArgvPromptMaxBytes(baseArgv: string[]): number {
-  const baseBytes = Buffer.byteLength(baseArgv.join(" "), "utf8");
+  const baseBytes = countWindowsCommandUnits(baseArgv);
   return Math.max(
     MIN_WINDOWS_PROMPT_MAX_BYTES,
     WINDOWS_CMDLINE_MAX_BYTES - WINDOWS_CMDLINE_SAFETY_BYTES - baseBytes,
   );
-}
-
-export function computeWindowsShellPromptMaxBytes(command: string): number {
-  return computeWindowsArgvPromptMaxBytes([
-    ...WINDOWS_BASH_COMMAND_PREFIX,
-    command,
-  ]);
 }
 
 /**
@@ -147,18 +142,22 @@ export class CopilotRunner implements AgentRunner {
     return parts;
   }
 
-  private promptMaxBytes(sessionId: string, resume: boolean): number {
+  private async promptMaxBytes(
+    workspace: string,
+    sessionId: string,
+    resume: boolean,
+  ): Promise<number> {
     if (process.platform !== "win32") {
       return DEFAULT_PROMPT_MAX_BYTES;
     }
-    if (typeof this.cfg.command === "string") {
-      return computeWindowsShellPromptMaxBytes(
-        this.buildShellCommand("", sessionId, resume),
-      );
-    }
-    return computeWindowsArgvPromptMaxBytes(
-      this.buildArgvCommand("", sessionId, resume),
+    const resolved = await resolveSubprocessCommand(
+      this.buildCommand("", sessionId, resume),
+      workspace,
     );
+    return computeWindowsArgvPromptMaxBytes([
+      resolved.executable,
+      ...resolved.execArgs,
+    ]);
   }
 
   async startSession(workspace: string): Promise<AgentSession> {
@@ -182,11 +181,12 @@ export class CopilotRunner implements AgentRunner {
 
     // SPEC §10.2: prompt has to fit in argv. Fail fast on oversized prompts
     // rather than producing a truncated CLI invocation.
-    const promptMaxBytes = this.promptMaxBytes(
+    const promptMaxBytes = await this.promptMaxBytes(
+      session.workspace,
       session.agentSessionId,
       !isFirstTurn,
     );
-    const promptBytes = Buffer.byteLength(prompt, "utf8");
+    const promptBytes = prompt.length;
     if (promptBytes > promptMaxBytes) {
       const error = `prompt_too_long: ${promptBytes} bytes > ${promptMaxBytes}`;
       onEvent({ event: "turn_failed", timestamp: now(), message: error });
