@@ -23,6 +23,22 @@ import type {
  * (typical kernel ARG_MAX is 256 KiB on macOS / 2 MiB on Linux).
  */
 const DEFAULT_PROMPT_MAX_BYTES = 128 * 1024;
+const WINDOWS_CMDLINE_MAX_BYTES = 8191;
+const WINDOWS_CMDLINE_SAFETY_BYTES = 512;
+const MIN_WINDOWS_PROMPT_MAX_BYTES = 1024;
+
+/**
+ * Windows command dispatch is constrained by a much smaller command-line limit
+ * than POSIX `ARG_MAX`, especially for npm-installed `.cmd` shims. Reserve a
+ * safety margin for quoting/flags so oversized prompts fail before spawn.
+ */
+export function computeWindowsArgvPromptMaxBytes(baseArgv: string[]): number {
+  const baseBytes = Buffer.byteLength(baseArgv.join(" "), "utf8");
+  return Math.max(
+    MIN_WINDOWS_PROMPT_MAX_BYTES,
+    WINDOWS_CMDLINE_MAX_BYTES - WINDOWS_CMDLINE_SAFETY_BYTES - baseBytes,
+  );
+}
 
 /**
  * GitHub Copilot CLI adapter, programmatic mode (SPEC §10.2).
@@ -61,11 +77,19 @@ export class CopilotRunner implements AgentRunner {
     sessionId: string,
     resume: boolean,
   ): string | string[] {
-    const isShell = typeof this.cfg.command === "string";
-    const q = isShell ? shellQuote : (s: string) => s;
+    return typeof this.cfg.command === "string"
+      ? this.buildShellCommand(prompt, sessionId, resume)
+      : this.buildArgvCommand(prompt, sessionId, resume);
+  }
+
+  private buildShellCommand(
+    prompt: string,
+    sessionId: string,
+    resume: boolean,
+  ): string {
     const parts = [
       "-p",
-      q(prompt),
+      shellQuote(prompt),
       "--output-format",
       "json",
       "--no-ask-user",
@@ -73,18 +97,55 @@ export class CopilotRunner implements AgentRunner {
       "none",
     ];
     if (resume) {
-      parts.push("--resume", q(sessionId));
+      parts.push("--resume", shellQuote(sessionId));
     } else {
-      parts.push("--session-id", q(sessionId));
+      parts.push("--session-id", shellQuote(sessionId));
     }
     if (this.cfg.allowAllTools) parts.push("--allow-all-tools");
     for (const tool of this.cfg.allowTools)
-      parts.push(`--allow-tool=${q(tool)}`);
-    for (const tool of this.cfg.denyTools) parts.push(`--deny-tool=${q(tool)}`);
-    if (this.cfg.model) parts.push("--model", q(this.cfg.model));
-    parts.push(...this.cfg.extraArgs.map(q));
-    if (isShell) return [this.cfg.command as string, ...parts].join(" ");
-    return [...(this.cfg.command as string[]), ...parts];
+      parts.push(`--allow-tool=${shellQuote(tool)}`);
+    for (const tool of this.cfg.denyTools)
+      parts.push(`--deny-tool=${shellQuote(tool)}`);
+    if (this.cfg.model) parts.push("--model", shellQuote(this.cfg.model));
+    parts.push(...this.cfg.extraArgs.map(shellQuote));
+    return [this.cfg.command, ...parts].join(" ");
+  }
+
+  private buildArgvCommand(
+    prompt: string,
+    sessionId: string,
+    resume: boolean,
+  ): string[] {
+    const parts: string[] = [
+      ...this.cfg.command,
+      "-p",
+      prompt,
+      "--output-format",
+      "json",
+      "--no-ask-user",
+      "--log-level",
+      "none",
+    ];
+    if (resume) {
+      parts.push("--resume", sessionId);
+    } else {
+      parts.push("--session-id", sessionId);
+    }
+    if (this.cfg.allowAllTools) parts.push("--allow-all-tools");
+    for (const tool of this.cfg.allowTools) parts.push(`--allow-tool=${tool}`);
+    for (const tool of this.cfg.denyTools) parts.push(`--deny-tool=${tool}`);
+    if (this.cfg.model) parts.push("--model", this.cfg.model);
+    parts.push(...this.cfg.extraArgs);
+    return parts;
+  }
+
+  private promptMaxBytes(sessionId: string, resume: boolean): number {
+    if (process.platform !== "win32" || typeof this.cfg.command === "string") {
+      return DEFAULT_PROMPT_MAX_BYTES;
+    }
+    return computeWindowsArgvPromptMaxBytes(
+      this.buildArgvCommand("", sessionId, resume),
+    );
   }
 
   async startSession(workspace: string): Promise<AgentSession> {
@@ -99,21 +160,25 @@ export class CopilotRunner implements AgentRunner {
   ): Promise<TurnResult> {
     session.turnNumber += 1;
 
-    // SPEC §10.2: prompt has to fit in argv. Fail fast on oversized prompts
-    // rather than producing a truncated CLI invocation.
-    const promptBytes = Buffer.byteLength(prompt, "utf8");
-    if (promptBytes > DEFAULT_PROMPT_MAX_BYTES) {
-      const error = `prompt_too_long: ${promptBytes} bytes > ${DEFAULT_PROMPT_MAX_BYTES}`;
-      onEvent({ event: "turn_failed", timestamp: now(), message: error });
-      return { ok: false, error };
-    }
-
     // First turn: pre-assign a UUID via --session-id so continuation turns can
     // resume. Continuation turns: --resume the same UUID. (SPEC §10.1, §10.2)
     if (session.agentSessionId === null) {
       session.agentSessionId = randomUUID();
     }
     const isFirstTurn = session.turnNumber === 1;
+
+    // SPEC §10.2: prompt has to fit in argv. Fail fast on oversized prompts
+    // rather than producing a truncated CLI invocation.
+    const promptMaxBytes = this.promptMaxBytes(
+      session.agentSessionId,
+      !isFirstTurn,
+    );
+    const promptBytes = Buffer.byteLength(prompt, "utf8");
+    if (promptBytes > promptMaxBytes) {
+      const error = `prompt_too_long: ${promptBytes} bytes > ${promptMaxBytes}`;
+      onEvent({ event: "turn_failed", timestamp: now(), message: error });
+      return { ok: false, error };
+    }
     const result = await this.runProcess(
       session,
       prompt,
