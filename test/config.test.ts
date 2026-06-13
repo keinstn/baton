@@ -65,8 +65,9 @@ describe("workspace.root path handling (SPEC §5.3.3)", () => {
   });
 
   it("resolves relative paths against the workflow directory", () => {
-    const config = makeConfig({ workspace: { root: "ws" } }, "/srv/project");
-    expect(config.workspace.root).toBe("/srv/project/ws");
+    const baseDir = join(os.tmpdir(), "project");
+    const config = makeConfig({ workspace: { root: "ws" } }, baseDir);
+    expect(config.workspace.root).toBe(join(baseDir, "ws"));
   });
 });
 
