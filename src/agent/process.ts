@@ -91,6 +91,8 @@ export interface RunSubprocessOptions {
   logger?: Logger;
 }
 
+const TIMEOUT_KILL_GRACE_MS = 1000;
+
 /**
  * Run one agent process: spawn `bash -lc <command>` in its own process group,
  * stream stdout lines through `onLine`, enforce the turn timeout, and normalize
@@ -149,9 +151,35 @@ export function runSubprocess(
     // (ENOENT etc.). The first handler to resolve wins; the second must not
     // call onEvent again (callbacks are not idempotent).
     let resolved = false;
+    let timeoutGraceTimer: NodeJS.Timeout | null = null;
+    const resolveOnce = (value: TurnResult, emitTimeoutEvent = false) => {
+      clearTimeout(timer);
+      if (timeoutGraceTimer) clearTimeout(timeoutGraceTimer);
+      if (resolved) return;
+      resolved = true;
+      session.proc = null;
+      rl.close();
+      if (emitTimeoutEvent) {
+        opts.onEvent({
+          event: "turn_cancelled",
+          timestamp: now(),
+          message: "turn_timeout",
+        });
+      }
+      resolvePromise(value);
+    };
     const timer = setTimeout(() => {
       timedOut = true;
       killProcessTree(proc);
+      // Windows can occasionally delay or miss the child `close` event after a
+      // forced tree kill. Resolve after a short grace period so timeout
+      // enforcement itself never hangs the worker or CI.
+      timeoutGraceTimer = setTimeout(() => {
+        proc.stdout.destroy();
+        proc.stderr.destroy();
+        proc.unref();
+        resolveOnce({ ok: false, error: "turn_timeout" }, true);
+      }, TIMEOUT_KILL_GRACE_MS);
     }, opts.timeoutMs);
 
     const rl = createInterface({ input: proc.stdout });
@@ -161,21 +189,14 @@ export function runSubprocess(
     });
 
     proc.on("error", (err) => {
-      clearTimeout(timer);
-      if (resolved) return;
-      resolved = true;
-      session.proc = null;
       opts.logger?.debug("subprocess error", {
         pid: proc.pid,
         error: String(err),
       });
-      resolvePromise({ ok: false, error: `startup_failed: ${String(err)}` });
+      resolveOnce({ ok: false, error: `startup_failed: ${String(err)}` });
     });
     proc.on("close", (code) => {
-      clearTimeout(timer);
       if (resolved) return;
-      resolved = true;
-      session.proc = null;
       opts.logger?.debug("subprocess closed", {
         pid: proc.pid,
         exit_code: code,
@@ -185,14 +206,9 @@ export function runSubprocess(
           : {}),
       });
       if (timedOut) {
-        opts.onEvent({
-          event: "turn_cancelled",
-          timestamp: now(),
-          message: "turn_timeout",
-        });
-        resolvePromise({ ok: false, error: "turn_timeout" });
+        resolveOnce({ ok: false, error: "turn_timeout" }, true);
       } else if (result) {
-        resolvePromise(result);
+        resolveOnce(result);
       } else {
         const error = `process_exit code=${code} stderr=${stderrTail.slice(-ERROR_MESSAGE_MAX_BYTES)}`;
         opts.onEvent({
@@ -200,7 +216,7 @@ export function runSubprocess(
           timestamp: now(),
           message: error,
         });
-        resolvePromise(code === 0 ? { ok: true } : { ok: false, error });
+        resolveOnce(code === 0 ? { ok: true } : { ok: false, error });
       }
     });
   });
