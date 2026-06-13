@@ -60,7 +60,9 @@ describe("$VAR resolution (SPEC §6.1)", () => {
 
 describe("claude_code/copilot command parsing", () => {
   it("parses a string command by splitting on whitespace", () => {
-    const config = makeConfig({ claude_code: { command: "claude --no-color" } });
+    const config = makeConfig({
+      claude_code: { command: "claude --no-color" },
+    });
     expect(config.claudeCode.command).toEqual(["claude", "--no-color"]);
   });
 
@@ -68,7 +70,10 @@ describe("claude_code/copilot command parsing", () => {
     const config = makeConfig({
       claude_code: { command: ["/path with spaces/claude", "--flag"] },
     });
-    expect(config.claudeCode.command).toEqual(["/path with spaces/claude", "--flag"]);
+    expect(config.claudeCode.command).toEqual([
+      "/path with spaces/claude",
+      "--flag",
+    ]);
   });
 
   it("defaults to [executable] when command is absent", () => {

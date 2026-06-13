@@ -359,7 +359,7 @@ export function validateDispatchConfig(config: BatonConfig): ValidationResult {
       agent.kind === "claude_code"
         ? config.claudeCode.command
         : config.copilot.command;
-    if (command.length === 0 || command[0].trim() === "") {
+    if (command.length === 0 || command[0]?.trim() === "") {
       errors.push({
         code: "missing_agent_command",
         message: `${agent.kind}.command must be present and non-empty`,

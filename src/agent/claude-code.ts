@@ -84,7 +84,7 @@ export class ClaudeCodeRunner implements AgentRunner {
     const resumeId = session.turnNumber > 1 ? session.agentSessionId : null;
     // Prompt is delivered on stdin to avoid argv length limits (SPEC §10.1).
     return runSubprocess(session, {
-      command: this.buildCommand(resumeId),  // string[] argv
+      command: this.buildCommand(resumeId), // string[] argv
       timeoutMs: this.cfg.turnTimeoutMs,
       stdin: prompt,
       onEvent,

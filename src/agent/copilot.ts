@@ -148,7 +148,7 @@ export class CopilotRunner implements AgentRunner {
     // The Copilot CLI takes prompts via argv (no stdin), so stdio in is ignored.
     let sessionStartedEmitted = false;
     return runSubprocess(session, {
-      command: this.buildCommand(prompt, sessionId, resume),  // string[] argv
+      command: this.buildCommand(prompt, sessionId, resume), // string[] argv
       timeoutMs: this.cfg.turnTimeoutMs,
       onEvent,
       onLine: (line) => {

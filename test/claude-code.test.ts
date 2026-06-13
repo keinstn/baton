@@ -14,14 +14,20 @@ async function fakeClaude(
 ): Promise<{ command: string[]; workspace: string }> {
   const dir = await mkdtemp(join(tmpdir(), "baton-cc-"));
   const scriptPath = join(dir, "fake-claude");
-  await writeFile(scriptPath, `#!/usr/bin/env bash\ncat >/dev/null\n${script}\n`);
+  await writeFile(
+    scriptPath,
+    `#!/usr/bin/env bash\ncat >/dev/null\n${script}\n`,
+  );
   await chmod(scriptPath, 0o755);
   const workspace = join(dir, "ws");
   await mkdir(workspace);
   return { command: [scriptPath], workspace };
 }
 
-function runner(command: string | string[], overrides: Record<string, unknown> = {}) {
+function runner(
+  command: string | string[],
+  overrides: Record<string, unknown> = {},
+) {
   const config = makeConfig({ claude_code: { command, ...overrides } });
   return new ClaudeCodeRunner(config.claudeCode);
 }
@@ -70,7 +76,9 @@ describe("buildCommand (SPEC §10.1)", () => {
 describe("applyConfig (SPEC §6.2 hot-reload)", () => {
   it("updates buildCommand output on the next call", () => {
     const r = runner("claude", { permission_mode: "acceptEdits" });
-    expect(r.buildCommand().join(" ")).toContain("--permission-mode acceptEdits");
+    expect(r.buildCommand().join(" ")).toContain(
+      "--permission-mode acceptEdits",
+    );
 
     const updatedConfig = makeConfig({
       claude_code: {
