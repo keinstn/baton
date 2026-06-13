@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { killWindowsTree } from "../agent/process.js";
 
 export interface HookResult {
   ok: boolean;
@@ -39,7 +40,14 @@ export function runHookScript(
 
     const timer = setTimeout(() => {
       timedOut = true;
-      proc.kill("SIGKILL");
+      // Hooks are not spawned detached, so the POSIX process-group kill used for
+      // agents is unsafe here; kill the single bash process on Unix, and the
+      // whole tree by PID on Windows so hook children are not orphaned.
+      if (process.platform === "win32" && proc.pid !== undefined) {
+        killWindowsTree(proc.pid, () => proc.kill("SIGKILL"));
+      } else {
+        proc.kill("SIGKILL");
+      }
     }, opts.timeoutMs);
 
     proc.on("error", () => {

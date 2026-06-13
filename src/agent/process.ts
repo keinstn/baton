@@ -12,15 +12,37 @@ export function shellQuote(s: string): string {
   return `'${s.replace(/'/g, "'\\''")}'`;
 }
 
-/** Kill the agent's whole process group (requires spawn with detached: true). */
+/**
+ * Kill a process tree on Windows by PID. `process.kill(-pid)` is a no-op there,
+ * so `taskkill /T` is the only way to reach the bash wrapper's children (the
+ * real `claude.exe` / `copilot.exe`). Best-effort; spawn errors fall back.
+ */
+export function killWindowsTree(pid: number, onError: () => void): void {
+  spawn("taskkill", ["/F", "/T", "/PID", String(pid)], {
+    stdio: "ignore",
+  }).on("error", onError);
+}
+
+/**
+ * Kill the agent's whole process tree. On Unix, signal the process group
+ * (requires spawn with detached: true); on Windows, `taskkill /T` by PID, since
+ * negative-pid signals are POSIX-only and would orphan the agent child.
+ */
 export function killProcessTree(proc: ChildProcess): void {
-  if (proc.pid !== undefined) {
-    try {
-      process.kill(-proc.pid, "SIGKILL");
-      return;
-    } catch {
-      // Fall through to single-process kill.
-    }
+  const pid = proc.pid;
+  if (pid === undefined) {
+    proc.kill("SIGKILL");
+    return;
+  }
+  if (process.platform === "win32") {
+    killWindowsTree(pid, () => proc.kill("SIGKILL"));
+    return;
+  }
+  try {
+    process.kill(-pid, "SIGKILL");
+    return;
+  } catch {
+    // Fall through to single-process kill.
   }
   proc.kill("SIGKILL");
 }

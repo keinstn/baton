@@ -155,7 +155,9 @@ export function expandPath(
   }
   let v = resolved;
   if (v === "~" || v.startsWith("~/")) {
-    v = path.join(os.homedir(), v.slice(1));
+    // slice(2) drops the leading "~/" so path.join uses a relative segment;
+    // slice(1) would leave a leading separator (wrong on Windows).
+    v = path.join(os.homedir(), v.slice(2));
   }
   return path.resolve(baseDir, v);
 }
