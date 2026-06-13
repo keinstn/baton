@@ -241,6 +241,16 @@ export function runSubprocess(
       if (timeoutGraceTimer) clearTimeout(timeoutGraceTimer);
       rl.close();
     };
+    const forceCloseProcess = (turnResult?: TurnResult) => {
+      proc.stdout.destroy();
+      proc.stderr.destroy();
+      proc.unref();
+      clearResources();
+      clearProcessRef();
+      if (resolved || !turnResult) return;
+      resolved = true;
+      resolvePromise(turnResult);
+    };
     const resolveOnce = (
       value: TurnResult,
       resolveOpts: {
@@ -261,12 +271,8 @@ export function runSubprocess(
       }
       resolvePromise(value);
     };
-    session.procForceClose = () => {
-      proc.stdout.destroy();
-      proc.stderr.destroy();
-      proc.unref();
-      resolveOnce({ ok: false, error: "turn_cancelled" });
-    };
+    session.procForceClose = () =>
+      forceCloseProcess({ ok: false, error: "turn_cancelled" });
     const timer = setTimeout(() => {
       timedOut = true;
       killProcessTree(proc);
@@ -275,13 +281,15 @@ export function runSubprocess(
       // enforcement itself never hangs the worker or CI. Keep session.proc so
       // stopSession() can continue cleanup until the process actually closes.
       timeoutGraceTimer = setTimeout(() => {
-        proc.stdout.destroy();
-        proc.stderr.destroy();
-        proc.unref();
-        resolveOnce(
-          { ok: false, error: "turn_timeout" },
-          { emitTimeoutEvent: true, clearProcessRef: false },
-        );
+        clearResources();
+        if (resolved) return;
+        resolved = true;
+        opts.onEvent({
+          event: "turn_cancelled",
+          timestamp: now(),
+          message: "turn_timeout",
+        });
+        resolvePromise({ ok: false, error: "turn_timeout" });
       }, TIMEOUT_KILL_GRACE_MS);
     }, opts.timeoutMs);
 
