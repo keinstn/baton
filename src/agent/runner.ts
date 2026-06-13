@@ -30,6 +30,9 @@ export interface AgentSession {
    *  it has been terminated. Used so stopSession() can await real shutdown
    *  before after_run hooks or workspace cleanup proceed. */
   procClosed: Promise<void> | null;
+  /** Best-effort force-settle for an in-flight turn when the OS confirms the
+   *  process tree was killed but Node never delivers a child `close` event. */
+  procForceClose: (() => void) | null;
   /** Count of turns already run on this session; the adapter increments it
    *  before each turn so continuation turns resume and skip session_started
    *  (SPEC §10.1). */

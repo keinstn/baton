@@ -29,6 +29,7 @@ class FakeRunner implements AgentRunner {
       agentSessionId: "sess-1",
       proc: null,
       procClosed: null,
+      procForceClose: null,
       turnNumber: 0,
     };
   }

@@ -1,6 +1,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { stat } from "node:fs/promises";
 import { createInterface } from "node:readline";
+import { setTimeout as delay } from "node:timers/promises";
 import { ERROR_MESSAGE_MAX_BYTES, STDERR_TAIL_BYTES } from "../constants.js";
 import { BatonError } from "../errors.js";
 import type { Logger } from "../observability/logger.js";
@@ -124,8 +125,19 @@ export async function stopSessionProcess(session: AgentSession): Promise<void> {
     const confirmedKilled = await killWindowsTreeAndWait(proc.pid, () =>
       proc.kill("SIGKILL"),
     );
-    if (!confirmedKilled && procClosed) {
-      await procClosed;
+    if (procClosed) {
+      if (confirmedKilled) {
+        const closed = await Promise.race([
+          procClosed.then(() => true),
+          delay(TIMEOUT_KILL_GRACE_MS).then(() => false),
+        ]);
+        if (!closed) {
+          session.procForceClose?.();
+          await procClosed;
+        }
+      } else {
+        await procClosed;
+      }
     }
   } else {
     killProcessTree(proc);
@@ -133,6 +145,7 @@ export async function stopSessionProcess(session: AgentSession): Promise<void> {
   }
   if (session.proc === proc) session.proc = null;
   if (session.procClosed === procClosed) session.procClosed = null;
+  session.procForceClose = null;
 }
 
 export interface RunSubprocessOptions {
@@ -185,6 +198,7 @@ export function runSubprocess(
     session.procClosed = new Promise<void>((resolve) => {
       resolveProcClosed = resolve;
     });
+    session.procForceClose = null;
 
     opts.logger?.debug("subprocess spawned", {
       pid: proc.pid,
@@ -216,6 +230,7 @@ export function runSubprocess(
     let timeoutGraceTimer: NodeJS.Timeout | null = null;
     const clearProcessRef = () => {
       if (session.proc === proc) session.proc = null;
+      session.procForceClose = null;
       if (session.procClosed) {
         resolveProcClosed();
         session.procClosed = null;
@@ -245,6 +260,12 @@ export function runSubprocess(
         });
       }
       resolvePromise(value);
+    };
+    session.procForceClose = () => {
+      proc.stdout.destroy();
+      proc.stderr.destroy();
+      proc.unref();
+      resolveOnce({ ok: false, error: "turn_cancelled" });
     };
     const timer = setTimeout(() => {
       timedOut = true;

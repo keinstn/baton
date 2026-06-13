@@ -88,6 +88,7 @@ describe("stopSessionProcess", () => {
       agentSessionId: null,
       proc,
       procClosed,
+      procForceClose: null,
       turnNumber: 0,
     };
     let settled = false;
@@ -115,6 +116,7 @@ describe("stopSessionProcess", () => {
       agentSessionId: null,
       proc,
       procClosed: Promise.resolve(),
+      procForceClose: null,
       turnNumber: 0,
     };
     await stopSessionProcess(session);
