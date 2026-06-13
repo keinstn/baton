@@ -12,3 +12,8 @@ export function now(): string {
 export function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
+
+/** POSIX shell-quote a string for embedding in a bash -lc command string. */
+export function shellQuote(s: string): string {
+  return `'${s.replace(/'/g, "'\\''")}'`;
+}

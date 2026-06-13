@@ -4,7 +4,7 @@ import {
   ERROR_MESSAGE_MAX_BYTES,
 } from "../constants.js";
 import type { Logger } from "../observability/logger.js";
-import { now } from "../util.js";
+import { now, shellQuote } from "../util.js";
 import {
   ensureWorkspaceDir,
   runSubprocess,
@@ -17,10 +17,6 @@ import type {
   AgentSession,
   TurnResult,
 } from "./runner.js";
-
-function shellQuote(s: string): string {
-  return `'${s.replace(/'/g, "'\\''")}'`;
-}
 
 /**
  * Claude Code adapter, CLI subprocess mode (SPEC §10.1).

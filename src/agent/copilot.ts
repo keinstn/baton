@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { CopilotConfig } from "../config/schema.js";
 import { DISPLAY_TEXT_MAX_BYTES } from "../constants.js";
 import type { Logger } from "../observability/logger.js";
-import { now } from "../util.js";
+import { now, shellQuote } from "../util.js";
 import {
   ensureWorkspaceDir,
   runSubprocess,
@@ -15,10 +15,6 @@ import type {
   AgentSession,
   TurnResult,
 } from "./runner.js";
-
-function shellQuote(s: string): string {
-  return `'${s.replace(/'/g, "'\\''")}'`;
-}
 
 /**
  * Default upper bound on prompt argv bytes. The GitHub Copilot CLI accepts
