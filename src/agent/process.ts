@@ -217,6 +217,7 @@ export function runSubprocess(
     // (ENOENT etc.). The first handler to resolve wins; the second must not
     // call onEvent again (callbacks are not idempotent).
     let resolved = false;
+    let timeoutGraceTimer: NodeJS.Timeout | null = null;
     const clearProcessRef = () => {
       if (session.proc === proc) session.proc = null;
       if (session.procClosed) {
@@ -226,6 +227,7 @@ export function runSubprocess(
     };
     const clearResources = () => {
       clearTimeout(timer);
+      if (timeoutGraceTimer) clearTimeout(timeoutGraceTimer);
       rl.close();
     };
     const resolveOnce = (
@@ -250,9 +252,24 @@ export function runSubprocess(
     };
     const timer = setTimeout(() => {
       timedOut = true;
-      // Kill the whole tree; the `close` handler below settles the turn as a
-      // timeout once the process exits.
-      killProcessTree(proc);
+      if (process.platform === "win32" && proc.pid !== undefined) {
+        void killWindowsTreeAndWait(proc.pid, () => proc.kill("SIGKILL"));
+        // Windows can delay or miss the child `close` after a forced tree kill,
+        // so force-settle the turn after a short grace period — otherwise
+        // timeout enforcement would hang the worker (and CI). Keep session.proc
+        // intact (clearProcessRef: false) so stopSession() can still await the
+        // real close when it eventually arrives; the close handler short-circuits
+        // on `resolved`.
+        timeoutGraceTimer = setTimeout(() => {
+          resolveOnce(
+            { ok: false, error: "turn_timeout" },
+            { emitTimeoutEvent: true, clearProcessRef: false },
+          );
+        }, TIMEOUT_KILL_GRACE_MS);
+      } else {
+        // On Unix, `close` arrives promptly after the SIGKILL tree kill.
+        killProcessTree(proc);
+      }
     }, opts.timeoutMs);
 
     const rl = createInterface({ input: proc.stdout });

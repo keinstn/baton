@@ -84,6 +84,36 @@ describe("stopSessionProcess Windows shutdown", () => {
     expect(session.procClosed).toBeNull();
   });
 
+  it("force-settles a timed-out turn on Windows when close never arrives", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+
+    const proc = new FakeChildProcess(123);
+    const taskkill = new EventEmitter();
+    spawnMock.mockReturnValueOnce(proc).mockImplementationOnce(() => {
+      // taskkill confirms, but the wrapper `close` event never fires — the
+      // grace timer must still settle the turn so the worker loop is unblocked.
+      setTimeout(() => taskkill.emit("close", 0), 0);
+      return taskkill as never;
+    });
+
+    const { runSubprocess } = await import("../src/agent/process.js");
+
+    const session = makeSession();
+    const turn = runSubprocess(session, {
+      command: "sleep 30",
+      timeoutMs: 100,
+      onEvent: () => {},
+      onLine: () => null,
+    });
+
+    // timeoutMs (100) elapses → tree kill → grace (1000) → forced turn_timeout.
+    await vi.advanceTimersByTimeAsync(1100);
+    await expect(turn).resolves.toEqual({ ok: false, error: "turn_timeout" });
+    // session.proc is kept so stopSession() can still await the real close.
+    expect(session.proc).toBe(proc);
+  });
+
   it("bounds the wait when taskkill runs but the child close never arrives", async () => {
     vi.useFakeTimers();
     vi.spyOn(process, "platform", "get").mockReturnValue("win32");
