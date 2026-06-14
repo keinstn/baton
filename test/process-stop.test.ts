@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentSession } from "../src/agent/runner.js";
+import { Logger } from "../src/observability/logger.js";
 import { makeTreeKiller } from "../src/platform/tree-killer.js";
 
 const { spawnMock } = vi.hoisted(() => ({
@@ -115,6 +116,50 @@ describe("stopSessionProcess Windows shutdown", () => {
     await expect(turn).resolves.toEqual({ ok: false, error: "turn_timeout" });
     // session.proc is kept so stopSession() can still await the real close.
     expect(session.proc).toBe(proc);
+  });
+
+  it("warns about a possible leaked tree when taskkill genuinely fails", async () => {
+    const lines: string[] = [];
+    const logger = new Logger({}, (line) => lines.push(line), "warn");
+    const killer = makeTreeKiller("win32", logger);
+
+    const proc = new FakeChildProcess(123);
+    const taskkill = new FakeChildProcess();
+    spawnMock.mockImplementationOnce(() => {
+      setTimeout(() => {
+        taskkill.stderr.write("ERROR: Access is denied.");
+        taskkill.emit("close", 1);
+      }, 0);
+      return taskkill as never;
+    });
+
+    await killer.kill(proc as never);
+
+    // The wrapper-only fallback ran, but the warn surfaces the likely leak.
+    expect(proc.kill).toHaveBeenCalledWith("SIGKILL");
+    expect(lines).toHaveLength(1);
+    const log = JSON.parse(lines[0] as string);
+    expect(log.level).toBe("warn");
+    expect(log.pid).toBe(123);
+    expect(log.taskkill_exit).toBe(1);
+    expect(log.taskkill_stderr).toBe("ERROR: Access is denied.");
+  });
+
+  it("stays quiet when taskkill reports the PID was already gone (exit 128)", async () => {
+    const lines: string[] = [];
+    const logger = new Logger({}, (line) => lines.push(line), "warn");
+    const killer = makeTreeKiller("win32", logger);
+
+    const proc = new FakeChildProcess(123);
+    const taskkill = new FakeChildProcess();
+    spawnMock.mockImplementationOnce(() => {
+      setTimeout(() => taskkill.emit("close", 128), 0);
+      return taskkill as never;
+    });
+
+    await killer.kill(proc as never);
+
+    expect(lines).toHaveLength(0);
   });
 
   it("bounds the wait when taskkill runs but the child close never arrives", async () => {

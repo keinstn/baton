@@ -1,4 +1,5 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import { Logger } from "../observability/logger.js";
 
 /**
  * Grace period to wait for a child `close` after a forced tree kill before
@@ -6,6 +7,10 @@ import { type ChildProcess, spawn } from "node:child_process";
  * the grace is never reached; on Windows it can lag seconds after taskkill.
  */
 const CLOSE_GRACE_MS = 1000;
+
+/** `taskkill` exit code when the target PID no longer exists. The tree is
+ *  already gone, so this is a benign race rather than a kill failure. */
+const TASKKILL_PID_NOT_FOUND = 128;
 
 /**
  * Per-OS process-tree termination — the one process primitive whose correct
@@ -50,6 +55,10 @@ class UnixTreeKiller implements TreeKiller {
 class WindowsTreeKiller implements TreeKiller {
   readonly closeGraceMs = CLOSE_GRACE_MS;
 
+  constructor(
+    private readonly logger = new Logger({ component: "tree-killer" }),
+  ) {}
+
   kill(proc: ChildProcess): Promise<void> {
     const pid = proc.pid;
     if (pid === undefined) {
@@ -58,24 +67,54 @@ class WindowsTreeKiller implements TreeKiller {
     }
     return new Promise((resolve) => {
       const tk = spawn("taskkill", ["/F", "/T", "/PID", String(pid)], {
-        stdio: "ignore",
+        stdio: ["ignore", "ignore", "pipe"],
+      });
+      let stderr = "";
+      tk.stderr?.on("data", (chunk) => {
+        stderr += String(chunk);
       });
       const fallback = () => proc.kill("SIGKILL");
-      tk.on("error", () => {
+      tk.on("error", (err) => {
+        // taskkill could not even be spawned: the tree is untouched, and the
+        // single-process fallback cannot reach descendants on Windows. Surface
+        // it so a leaked agent/hook tree is not hidden behind a clean shutdown.
+        this.warnLeak(pid, { error: err.message });
         fallback();
         resolve();
       });
-      // A non-zero taskkill exit means the tree may not have been killed; fall
-      // back so the caller's `close`/grace path still settles.
       tk.on("close", (code) => {
-        if (code !== 0) fallback();
+        if (code !== 0) {
+          fallback();
+          // Exit 128 means the PID was already gone (benign race). Any other
+          // non-zero means taskkill genuinely failed; the wrapper-only fallback
+          // cannot kill the tree on Windows, so descendants may still be running
+          // even though the caller force-settles and reports a clean shutdown.
+          if (code !== TASKKILL_PID_NOT_FOUND) {
+            this.warnLeak(pid, {
+              taskkill_exit: code,
+              taskkill_stderr: stderr.trim(),
+            });
+          }
+        }
         resolve();
       });
     });
   }
+
+  private warnLeak(pid: number, fields: Record<string, unknown>): void {
+    this.logger.warn(
+      "tree kill failed; agent/hook descendants may still be running",
+      { pid, ...fields },
+    );
+  }
 }
 
 /** Select the process-tree killer for the current platform. */
-export function makeTreeKiller(platform = process.platform): TreeKiller {
-  return platform === "win32" ? new WindowsTreeKiller() : new UnixTreeKiller();
+export function makeTreeKiller(
+  platform = process.platform,
+  logger?: Logger,
+): TreeKiller {
+  return platform === "win32"
+    ? new WindowsTreeKiller(logger)
+    : new UnixTreeKiller();
 }
