@@ -148,28 +148,25 @@ export function runSubprocess(
       if (timeoutGraceTimer) clearTimeout(timeoutGraceTimer);
       rl.close();
     };
-    const forceCloseProcess = (turnResult?: TurnResult) => {
+    const forceCloseProcess = (turnResult: TurnResult) => {
       proc.stdout.destroy();
       proc.stderr.destroy();
       proc.unref();
       clearResources();
       clearProcessRef();
-      if (resolved || !turnResult) return;
+      if (resolved) return;
       resolved = true;
       resolvePromise(turnResult);
     };
-    const resolveOnce = (
-      value: TurnResult,
-      resolveOpts: {
-        emitTimeoutEvent?: boolean;
-        clearProcessRef?: boolean;
-      } = {},
-    ) => {
+    // The error/close handlers clear the process ref themselves before calling
+    // this; the timeout grace path deliberately leaves it intact so stopSession()
+    // can await the real close. So resolveOnce only owns timer/rl teardown and the
+    // one-shot resolve — never the process ref.
+    const resolveOnce = (value: TurnResult, emitTimeoutEvent = false) => {
       clearResources();
       if (resolved) return;
       resolved = true;
-      if (resolveOpts.clearProcessRef !== false) clearProcessRef();
-      if (resolveOpts.emitTimeoutEvent) {
+      if (emitTimeoutEvent) {
         opts.onEvent({
           event: "turn_cancelled",
           timestamp: now(),
@@ -185,15 +182,12 @@ export function runSubprocess(
       void treeKiller.kill(proc);
       // Windows can delay or miss the child `close` after a forced tree kill, so
       // force-settle the turn after the grace period — otherwise timeout
-      // enforcement would hang the worker (and CI). Keep session.proc intact
-      // (clearProcessRef: false) so stopSession() can still await the real close
-      // when it eventually arrives; the close handler short-circuits on
+      // enforcement would hang the worker (and CI). session.proc is left intact
+      // (resolveOnce never clears it) so stopSession() can still await the real
+      // close when it eventually arrives; the close handler short-circuits on
       // `resolved`. On Unix `close` arrives at once and clears this timer first.
       timeoutGraceTimer = setTimeout(() => {
-        resolveOnce(
-          { ok: false, error: "turn_timeout" },
-          { emitTimeoutEvent: true, clearProcessRef: false },
-        );
+        resolveOnce({ ok: false, error: "turn_timeout" }, true);
       }, treeKiller.closeGraceMs);
     }, opts.timeoutMs);
 
@@ -226,10 +220,7 @@ export function runSubprocess(
       });
       if (resolved) return;
       if (timedOut) {
-        resolveOnce(
-          { ok: false, error: "turn_timeout" },
-          { emitTimeoutEvent: true },
-        );
+        resolveOnce({ ok: false, error: "turn_timeout" }, true);
       } else if (result) {
         resolveOnce(result);
       } else {
