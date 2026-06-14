@@ -30,6 +30,16 @@ class FakeChildProcess extends EventEmitter {
   }
 }
 
+function makeSession(): AgentSession {
+  return {
+    workspace: "/tmp/ws",
+    agentSessionId: null,
+    proc: null,
+    procClosed: null,
+    turnNumber: 0,
+  };
+}
+
 describe("stopSessionProcess Windows shutdown", () => {
   afterEach(() => {
     spawnMock.mockReset();
@@ -37,223 +47,71 @@ describe("stopSessionProcess Windows shutdown", () => {
     vi.restoreAllMocks();
   });
 
-  it("force-settles a timed-out turn when stopSession runs after taskkill but close never arrives", async () => {
-    vi.useFakeTimers();
+  it("kills the running tree with taskkill and clears the session once it closes", async () => {
     vi.spyOn(process, "platform", "get").mockReturnValue("win32");
 
     const proc = new FakeChildProcess(123);
-    const taskkillForTimeout = new EventEmitter();
-    const taskkillForStop = new EventEmitter();
-    spawnMock
-      .mockReturnValueOnce(proc)
-      .mockImplementationOnce(() => {
-        setTimeout(() => taskkillForTimeout.emit("close", 0), 0);
-        return taskkillForTimeout as never;
-      })
-      .mockImplementationOnce(() => {
-        setTimeout(() => taskkillForStop.emit("close", 0), 0);
-        return taskkillForStop as never;
-      });
+    const taskkill = new EventEmitter();
+    spawnMock.mockReturnValueOnce(proc).mockImplementationOnce(() => {
+      setTimeout(() => {
+        taskkill.emit("close", 0);
+        proc.exitCode = 0;
+        proc.emit("close", 0);
+      }, 0);
+      return taskkill as never;
+    });
 
     const { runSubprocess, stopSessionProcess } = await import(
       "../src/agent/process.js"
     );
 
-    const session: AgentSession = {
-      workspace: "/tmp/ws",
-      agentSessionId: null,
-      proc: null,
-      procClosed: null,
-      procForceClose: null,
-      procTreeKillConfirmed: false,
-      turnNumber: 0,
-    };
-
-    const turn = runSubprocess(session, {
+    const session = makeSession();
+    void runSubprocess(session, {
       command: "sleep 30",
-      timeoutMs: 10,
+      timeoutMs: 60_000,
       onEvent: () => {},
       onLine: () => null,
     });
 
-    await vi.advanceTimersByTimeAsync(1010);
-    await expect(turn).resolves.toEqual({ ok: false, error: "turn_timeout" });
-    expect(session.proc).toBe(proc);
-    expect(session.procClosed).not.toBeNull();
-    expect(session.procForceClose).not.toBeNull();
+    await stopSessionProcess(session);
 
-    const stopping = stopSessionProcess(session);
-    await vi.advanceTimersByTimeAsync(1000);
-    await stopping;
-
-    expect(proc.unref).toHaveBeenCalled();
+    expect(spawnMock).toHaveBeenCalledWith(
+      "taskkill",
+      ["/F", "/T", "/PID", "123"],
+      expect.anything(),
+    );
     expect(session.proc).toBeNull();
     expect(session.procClosed).toBeNull();
-    expect(session.procForceClose).toBeNull();
   });
 
-  it("fails shutdown if the follow-up taskkill cannot confirm tree termination", async () => {
+  it("bounds the wait when taskkill runs but the child close never arrives", async () => {
     vi.useFakeTimers();
     vi.spyOn(process, "platform", "get").mockReturnValue("win32");
 
     const proc = new FakeChildProcess(123);
-    proc.kill.mockReturnValue(true);
-    const taskkillForTimeout = new EventEmitter();
-    const taskkillForStop = new EventEmitter();
-    spawnMock
-      .mockReturnValueOnce(proc)
-      .mockImplementationOnce(() => {
-        setTimeout(() => taskkillForTimeout.emit("close", 1), 0);
-        return taskkillForTimeout as never;
-      })
-      .mockImplementationOnce(() => {
-        setTimeout(() => taskkillForStop.emit("close", 1), 0);
-        return taskkillForStop as never;
-      });
+    const taskkill = new EventEmitter();
+    spawnMock.mockReturnValueOnce(proc).mockImplementationOnce(() => {
+      // taskkill confirms, but the wrapper `close` event never fires.
+      setTimeout(() => taskkill.emit("close", 0), 0);
+      return taskkill as never;
+    });
 
-    const { stopSessionProcess, runSubprocess } = await import(
+    const { runSubprocess, stopSessionProcess } = await import(
       "../src/agent/process.js"
     );
 
-    const session: AgentSession = {
-      workspace: "/tmp/ws",
-      agentSessionId: null,
-      proc: null,
-      procClosed: null,
-      procForceClose: null,
-      procTreeKillConfirmed: false,
-      turnNumber: 0,
-    };
-
-    const turn = runSubprocess(session, {
+    const session = makeSession();
+    void runSubprocess(session, {
       command: "sleep 30",
-      timeoutMs: 10,
+      timeoutMs: 60_000,
       onEvent: () => {},
       onLine: () => null,
     });
 
-    await vi.advanceTimersByTimeAsync(1010);
-    await expect(turn).resolves.toEqual({ ok: false, error: "turn_timeout" });
-
     const stopping = stopSessionProcess(session);
-    const stopExpectation = expect(stopping).rejects.toMatchObject({
-      code: "process_tree_kill_failed",
-    });
     await vi.advanceTimersByTimeAsync(1000);
-    await stopExpectation;
-    expect(session.proc).toBeNull();
-    expect(session.procClosed).toBeNull();
-    expect(session.procForceClose).toBeNull();
-  });
-
-  it("accepts an already-exited process when an earlier tree kill was confirmed", async () => {
-    vi.useFakeTimers();
-    vi.spyOn(process, "platform", "get").mockReturnValue("win32");
-
-    const proc = new FakeChildProcess(123);
-    proc.kill.mockReturnValue(false);
-    const taskkillForTimeout = new EventEmitter();
-    const taskkillForStop = new EventEmitter();
-    spawnMock
-      .mockReturnValueOnce(proc)
-      .mockImplementationOnce(() => {
-        setTimeout(() => taskkillForTimeout.emit("close", 0), 0);
-        return taskkillForTimeout as never;
-      })
-      .mockImplementationOnce(() => {
-        setTimeout(() => taskkillForStop.emit("close", 1), 0);
-        setTimeout(() => {
-          proc.exitCode = 0;
-          proc.emit("close", 0);
-        }, 10);
-        return taskkillForStop as never;
-      });
-
-    const { stopSessionProcess, runSubprocess } = await import(
-      "../src/agent/process.js"
-    );
-
-    const session: AgentSession = {
-      workspace: "/tmp/ws",
-      agentSessionId: null,
-      proc: null,
-      procClosed: null,
-      procForceClose: null,
-      procTreeKillConfirmed: false,
-      turnNumber: 0,
-    };
-
-    const turn = runSubprocess(session, {
-      command: "sleep 30",
-      timeoutMs: 10,
-      onEvent: () => {},
-      onLine: () => null,
-    });
-
-    await vi.advanceTimersByTimeAsync(1010);
-    await expect(turn).resolves.toEqual({ ok: false, error: "turn_timeout" });
-
-    const stopping = stopSessionProcess(session);
-    await vi.advanceTimersByTimeAsync(20);
     await expect(stopping).resolves.toBeUndefined();
-    expect(proc.kill).toHaveBeenCalledWith("SIGKILL");
     expect(session.proc).toBeNull();
     expect(session.procClosed).toBeNull();
-    expect(session.procForceClose).toBeNull();
-  });
-
-  it("still fails if only the wrapper exits and no tree kill was ever confirmed", async () => {
-    vi.useFakeTimers();
-    vi.spyOn(process, "platform", "get").mockReturnValue("win32");
-
-    const proc = new FakeChildProcess(123);
-    proc.kill.mockReturnValueOnce(true).mockReturnValueOnce(false);
-    const taskkillForTimeout = new EventEmitter();
-    const taskkillForStop = new EventEmitter();
-    spawnMock
-      .mockReturnValueOnce(proc)
-      .mockImplementationOnce(() => {
-        setTimeout(() => taskkillForTimeout.emit("close", 1), 0);
-        return taskkillForTimeout as never;
-      })
-      .mockImplementationOnce(() => {
-        setTimeout(() => taskkillForStop.emit("close", 1), 0);
-        setTimeout(() => {
-          proc.exitCode = 0;
-          proc.emit("close", 0);
-        }, 10);
-        return taskkillForStop as never;
-      });
-
-    const { stopSessionProcess, runSubprocess } = await import(
-      "../src/agent/process.js"
-    );
-
-    const session: AgentSession = {
-      workspace: "/tmp/ws",
-      agentSessionId: null,
-      proc: null,
-      procClosed: null,
-      procForceClose: null,
-      procTreeKillConfirmed: false,
-      turnNumber: 0,
-    };
-
-    const turn = runSubprocess(session, {
-      command: "sleep 30",
-      timeoutMs: 10,
-      onEvent: () => {},
-      onLine: () => null,
-    });
-
-    await vi.advanceTimersByTimeAsync(1010);
-    await expect(turn).resolves.toEqual({ ok: false, error: "turn_timeout" });
-
-    const stopping = stopSessionProcess(session);
-    const stopExpectation = expect(stopping).rejects.toMatchObject({
-      code: "process_tree_kill_failed",
-    });
-    await vi.advanceTimersByTimeAsync(20);
-    await stopExpectation;
   });
 });

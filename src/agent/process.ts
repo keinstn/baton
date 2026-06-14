@@ -111,7 +111,7 @@ export async function ensureWorkspaceDir(workspace: string): Promise<void> {
   }
 }
 
-/** Terminate a session's process tree and wait until shutdown is confirmed. */
+/** Terminate a session's process tree and wait until it has closed. */
 export async function stopSessionProcess(session: AgentSession): Promise<void> {
   const proc = session.proc;
   const procClosed = session.procClosed;
@@ -121,44 +121,22 @@ export async function stopSessionProcess(session: AgentSession): Promise<void> {
       await procClosed;
       return;
     }
-    const closed = await Promise.race([
-      procClosed.then(() => true),
-      delay(TIMEOUT_KILL_GRACE_MS).then(() => false),
-    ]);
-    if (!closed) {
-      session.procForceClose?.();
-      await procClosed;
-    }
+    // Windows may briefly delay the child `close` after a forced tree kill;
+    // bound the wait so shutdown never hangs the worker.
+    await Promise.race([procClosed, delay(TIMEOUT_KILL_GRACE_MS)]);
   };
   if (!proc) return;
   if (proc.exitCode !== null) {
     await waitForProcClosed();
-    session.proc = null;
-    session.procClosed = null;
-    session.procForceClose = null;
-    session.procTreeKillConfirmed = false;
-    return;
-  }
-  if (process.platform === "win32" && proc.pid !== undefined) {
-    const confirmedKilled = await killWindowsTreeAndWait(proc.pid, () =>
-      proc.kill("SIGKILL"),
-    );
-    if (confirmedKilled) session.procTreeKillConfirmed = true;
+  } else if (process.platform === "win32" && proc.pid !== undefined) {
+    await killWindowsTreeAndWait(proc.pid, () => proc.kill("SIGKILL"));
     await waitForProcClosed();
-    if (!confirmedKilled && !session.procTreeKillConfirmed) {
-      throw new BatonError(
-        "process_tree_kill_failed",
-        `taskkill failed for pid ${proc.pid}`,
-      );
-    }
   } else {
     killProcessTree(proc);
     if (procClosed) await procClosed;
   }
   if (session.proc === proc) session.proc = null;
   if (session.procClosed === procClosed) session.procClosed = null;
-  session.procForceClose = null;
-  session.procTreeKillConfirmed = false;
 }
 
 export interface RunSubprocessOptions {
@@ -211,8 +189,6 @@ export function runSubprocess(
     session.procClosed = new Promise<void>((resolve) => {
       resolveProcClosed = resolve;
     });
-    session.procForceClose = null;
-    session.procTreeKillConfirmed = false;
 
     opts.logger?.debug("subprocess spawned", {
       pid: proc.pid,
@@ -241,10 +217,8 @@ export function runSubprocess(
     // (ENOENT etc.). The first handler to resolve wins; the second must not
     // call onEvent again (callbacks are not idempotent).
     let resolved = false;
-    let timeoutGraceTimer: NodeJS.Timeout | null = null;
     const clearProcessRef = () => {
       if (session.proc === proc) session.proc = null;
-      session.procForceClose = null;
       if (session.procClosed) {
         resolveProcClosed();
         session.procClosed = null;
@@ -252,18 +226,7 @@ export function runSubprocess(
     };
     const clearResources = () => {
       clearTimeout(timer);
-      if (timeoutGraceTimer) clearTimeout(timeoutGraceTimer);
       rl.close();
-    };
-    const forceCloseProcess = (turnResult?: TurnResult) => {
-      proc.stdout.destroy();
-      proc.stderr.destroy();
-      proc.unref();
-      clearResources();
-      clearProcessRef();
-      if (resolved || !turnResult) return;
-      resolved = true;
-      resolvePromise(turnResult);
     };
     const resolveOnce = (
       value: TurnResult,
@@ -285,36 +248,11 @@ export function runSubprocess(
       }
       resolvePromise(value);
     };
-    session.procForceClose = () =>
-      forceCloseProcess({ ok: false, error: "turn_cancelled" });
     const timer = setTimeout(() => {
       timedOut = true;
-      if (process.platform === "win32" && proc.pid !== undefined) {
-        void killWindowsTreeAndWait(proc.pid, () => proc.kill("SIGKILL")).then(
-          (confirmed) => {
-            if (confirmed && session.proc === proc) {
-              session.procTreeKillConfirmed = true;
-            }
-          },
-        );
-      } else {
-        killProcessTree(proc);
-      }
-      // Windows can occasionally delay or miss the child `close` event after a
-      // forced tree kill. Resolve after a short grace period so timeout
-      // enforcement itself never hangs the worker or CI. Keep session.proc so
-      // stopSession() can continue cleanup until the process actually closes.
-      timeoutGraceTimer = setTimeout(() => {
-        clearResources();
-        if (resolved) return;
-        resolved = true;
-        opts.onEvent({
-          event: "turn_cancelled",
-          timestamp: now(),
-          message: "turn_timeout",
-        });
-        resolvePromise({ ok: false, error: "turn_timeout" });
-      }, TIMEOUT_KILL_GRACE_MS);
+      // Kill the whole tree; the `close` handler below settles the turn as a
+      // timeout once the process exits.
+      killProcessTree(proc);
     }, opts.timeoutMs);
 
     const rl = createInterface({ input: proc.stdout });

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -73,29 +73,6 @@ describe("workspace creation and hooks (SPEC §9.2, §9.4)", () => {
     expect(content.trim().split("\n")).toHaveLength(1);
   });
 
-  it("recreates workspaces left behind by failed after_create hooks", async () => {
-    const root = await tempRoot();
-    const workspacePath = join(root, "repo-1");
-    const m = manager(root, { after_create: "echo fresh > created.txt" });
-    await m.createForIssue(makeIssue());
-    await writeFile(
-      join(workspacePath, ".baton-after-create-failed"),
-      "stale\n",
-    );
-    await writeFile(join(workspacePath, "stale.txt"), "stale\n");
-
-    const recreated = await m.createForIssue(makeIssue());
-
-    expect(recreated.createdNow).toBe(true);
-    expect(await exists(join(workspacePath, "stale.txt"))).toBe(false);
-    expect(await readFile(join(workspacePath, "created.txt"), "utf8")).toBe(
-      "fresh\n",
-    );
-    expect(
-      await exists(join(workspacePath, ".baton-after-create-failed")),
-    ).toBe(false);
-  });
-
   it("exposes BATON_* environment variables to hooks", async () => {
     const root = await tempRoot();
     const m = manager(root, {
@@ -137,10 +114,9 @@ describe("workspace creation and hooks (SPEC §9.2, §9.4)", () => {
     });
   });
 
-  it("marks failed after_create workspaces invalid when cleanup fails", async () => {
+  it("reports cleanup failure when removing a failed after_create workspace fails", async () => {
     const root = await tempRoot();
     const issue = makeIssue();
-    const workspacePath = join(root, issue.identifier);
     const m = manager(root, {
       after_create: "echo broken > stale.txt; exit 1",
     });
@@ -152,24 +128,6 @@ describe("workspace creation and hooks (SPEC §9.2, §9.4)", () => {
       code: "hook_failed",
       message: expect.stringContaining("workspace cleanup failed"),
     });
-    expect(
-      await exists(join(workspacePath, ".baton-after-create-failed")),
-    ).toBe(true);
-    expect(await exists(join(workspacePath, "stale.txt"))).toBe(true);
-
-    m.applyConfig(
-      makeConfig({
-        workspace: { root },
-        hooks: { after_create: "echo repaired > created.txt" },
-      }),
-    );
-
-    const recreated = await m.createForIssue(issue);
-    expect(recreated.createdNow).toBe(true);
-    expect(await exists(join(workspacePath, "stale.txt"))).toBe(false);
-    expect(await readFile(join(workspacePath, "created.txt"), "utf8")).toBe(
-      "repaired\n",
-    );
   });
 
   it("before_run failure aborts the attempt", async () => {

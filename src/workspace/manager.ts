@@ -1,4 +1,4 @@
-import { mkdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import type { BatonConfig } from "../config/schema.js";
@@ -10,7 +10,6 @@ import { runHookScript } from "./hooks.js";
 
 const WORKSPACE_REMOVE_RETRY_MS = 100;
 const WORKSPACE_REMOVE_RETRY_WINDOW_MS = 5000;
-const INVALID_AFTER_CREATE_MARKER = ".baton-after-create-failed";
 
 function isTransientWindowsRmError(err: unknown): boolean {
   if (!(err instanceof Error) || !("code" in err)) return false;
@@ -112,29 +111,6 @@ export class WorkspaceManager {
     }
   }
 
-  private invalidAfterCreateMarkerPath(workspacePath: string): string {
-    return path.join(workspacePath, INVALID_AFTER_CREATE_MARKER);
-  }
-
-  private async markInvalidAfterCreate(workspacePath: string): Promise<void> {
-    await writeFile(
-      this.invalidAfterCreateMarkerPath(workspacePath),
-      "after_create failed; workspace must not be reused\n",
-    );
-  }
-
-  private async hasInvalidAfterCreateMarker(
-    workspacePath: string,
-  ): Promise<boolean> {
-    try {
-      return (
-        await stat(this.invalidAfterCreateMarkerPath(workspacePath))
-      ).isFile();
-    } catch {
-      return false;
-    }
-  }
-
   private async createFreshWorkspace(
     issue: Issue,
     workspacePath: string,
@@ -151,13 +127,6 @@ export class WorkspaceManager {
     });
     if (result.ok) return;
 
-    await this.markInvalidAfterCreate(workspacePath);
-    if (!result.treeKillConfirmed) {
-      throw new BatonError(
-        "hook_failed",
-        `after_create hook failed and taskkill did not confirm subtree termination (timedOut=${result.timedOut} code=${result.code}): ${result.output.slice(0, 500)}`,
-      );
-    }
     // SPEC §9.4: after_create failure is fatal to workspace creation;
     // remove the partially prepared directory (SPEC §9.3).
     try {
@@ -191,23 +160,11 @@ export class WorkspaceManager {
     } catch {
       existing = null;
     }
-    if (existing !== null) {
-      if (!existing.isDirectory()) {
-        throw new BatonError(
-          "workspace_not_directory",
-          `workspace path exists and is not a directory: ${workspacePath}`,
-        );
-      }
-      if (await this.hasInvalidAfterCreateMarker(workspacePath)) {
-        log.warn(
-          "discarding workspace left behind by failed after_create hook",
-          {
-            workspace: workspacePath,
-          },
-        );
-        await this.removeWorkspaceDir(workspacePath);
-        existing = null;
-      }
+    if (existing !== null && !existing.isDirectory()) {
+      throw new BatonError(
+        "workspace_not_directory",
+        `workspace path exists and is not a directory: ${workspacePath}`,
+      );
     }
     if (existing === null) {
       createdNow = true;
@@ -227,7 +184,7 @@ export class WorkspaceManager {
     if (!result.ok) {
       throw new BatonError(
         "hook_failed",
-        `${!result.treeKillConfirmed ? "before_run hook failed and taskkill did not confirm subtree termination" : "before_run hook failed"} (timedOut=${result.timedOut} code=${result.code}): ${result.output.slice(0, 500)}`,
+        `before_run hook failed (timedOut=${result.timedOut} code=${result.code}): ${result.output.slice(0, 500)}`,
       );
     }
   }
@@ -245,7 +202,6 @@ export class WorkspaceManager {
         issue_identifier: issue.identifier,
         timed_out: result.timedOut,
         code: result.code,
-        tree_kill_confirmed: result.treeKillConfirmed,
       });
     }
   }
@@ -271,9 +227,7 @@ export class WorkspaceManager {
           issue_identifier: issue.identifier,
           timed_out: result.timedOut,
           code: result.code,
-          tree_kill_confirmed: result.treeKillConfirmed,
         });
-        if (!result.treeKillConfirmed) return;
       }
     }
     await this.removeWorkspaceDir(workspacePath);

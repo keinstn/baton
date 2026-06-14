@@ -1,18 +1,15 @@
 import { spawn } from "node:child_process";
-import { setTimeout as delay } from "node:timers/promises";
-import { killWindowsTreeAndWait } from "../agent/process.js";
+import { killWindowsTree } from "../agent/process.js";
 
 export interface HookResult {
   ok: boolean;
   code: number | null;
   timedOut: boolean;
-  treeKillConfirmed: boolean;
   /** Combined stdout+stderr, truncated (SPEC §15.4). */
   output: string;
 }
 
 const MAX_OUTPUT_BYTES = 8 * 1024;
-const TIMEOUT_KILL_GRACE_MS = 1000;
 
 /**
  * Run a workspace hook script (SPEC §9.4): `bash -lc <script>` with the
@@ -25,7 +22,6 @@ export function runHookScript(
     env?: Record<string, string>;
     timeoutMs: number;
     platform?: NodeJS.Platform;
-    timeoutGraceMs?: number;
   },
 ): Promise<HookResult> {
   return new Promise((resolvePromise) => {
@@ -37,10 +33,6 @@ export function runHookScript(
 
     let output = "";
     let timedOut = false;
-    let resolved = false;
-    let timeoutGraceTimer: NodeJS.Timeout | null = null;
-    let treeKillConfirmed = true;
-    let treeKillPromise: Promise<boolean> | null = null;
     const append = (chunk: Buffer) => {
       if (output.length < MAX_OUTPUT_BYTES) {
         output += chunk
@@ -50,66 +42,37 @@ export function runHookScript(
     };
     proc.stdout.on("data", append);
     proc.stderr.on("data", append);
-    const resolveOnce = (result: HookResult) => {
-      clearTimeout(timer);
-      if (timeoutGraceTimer) clearTimeout(timeoutGraceTimer);
-      if (resolved) return;
-      resolved = true;
-      resolvePromise({ ...result, output: result.output.trim() });
-    };
+
     const timer = setTimeout(() => {
       timedOut = true;
       const platform = opts.platform ?? process.platform;
       // Hooks are not spawned detached, so the POSIX process-group kill used for
       // agents is unsafe here; kill the single bash process on Unix, and the
-      // whole tree by PID on Windows so hook children are not orphaned.
+      // whole tree by PID on Windows so hook children are not orphaned. Either
+      // way the `close` handler below settles the promise once the process exits.
       if (platform === "win32" && proc.pid !== undefined) {
-        treeKillPromise = killWindowsTreeAndWait(proc.pid, () =>
-          proc.kill("SIGKILL"),
-        );
-        // Mirror the agent subprocess safeguard: Windows can occasionally miss
-        // or delay `close` after taskkill, so force-settle the timeout path.
-        timeoutGraceTimer = setTimeout(async () => {
-          if (treeKillPromise) {
-            treeKillConfirmed = await Promise.race([
-              treeKillPromise,
-              delay(opts.timeoutGraceMs ?? TIMEOUT_KILL_GRACE_MS).then(
-                () => false,
-              ),
-            ]);
-          }
-          proc.stdout.destroy();
-          proc.stderr.destroy();
-          proc.unref();
-          resolveOnce({
-            ok: false,
-            code: null,
-            timedOut: true,
-            treeKillConfirmed,
-            output,
-          });
-        }, opts.timeoutGraceMs ?? TIMEOUT_KILL_GRACE_MS);
+        killWindowsTree(proc.pid, () => proc.kill("SIGKILL"));
       } else {
         proc.kill("SIGKILL");
       }
     }, opts.timeoutMs);
 
     proc.on("error", () => {
-      resolveOnce({
+      clearTimeout(timer);
+      resolvePromise({
         ok: false,
         code: null,
         timedOut,
-        treeKillConfirmed,
-        output,
+        output: output.trim(),
       });
     });
     proc.on("close", (code) => {
-      resolveOnce({
+      clearTimeout(timer);
+      resolvePromise({
         ok: !timedOut && code === 0,
         code,
         timedOut,
-        treeKillConfirmed,
-        output,
+        output: output.trim(),
       });
     });
   });
