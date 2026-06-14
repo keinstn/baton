@@ -21,6 +21,23 @@ function isGoawayError(err: unknown): boolean {
   return false;
 }
 
+/**
+ * Walk the error cause chain looking for transient network errors that warrant
+ * a single retry: ECONNRESET (idle-connection reset), ETIMEDOUT (stalled
+ * connection), or AbortError (request timeout via AbortSignal).
+ */
+function isRetryableNetworkError(err: unknown): boolean {
+  const retryableCodes = new Set(["ECONNRESET", "ETIMEDOUT"]);
+  let cur: unknown = err;
+  while (cur instanceof Error) {
+    if (cur.name === "AbortError") return true;
+    const code = (cur as NodeJS.ErrnoException).code;
+    if (code !== undefined && retryableCodes.has(code)) return true;
+    cur = (cur as Error & { cause?: unknown }).cause;
+  }
+  return false;
+}
+
 export interface ProjectMeta {
   projectId: string;
   statusOptions: string[];
@@ -119,10 +136,11 @@ export class GitHubProjectsClient implements TrackerClient {
     try {
       res = await doFetch();
     } catch (err) {
-      // HTTP/2 GOAWAY (code 0 = graceful shutdown): the server closed the
-      // connection normally; retry once so undici opens a fresh connection.
-      if (isGoawayError(err)) {
-        this.logger?.debug("github api: GOAWAY received, retrying");
+      // Retry once on HTTP/2 GOAWAY or transient network errors (ECONNRESET,
+      // ETIMEDOUT, AbortError). ENOTFOUND and other non-transient errors throw
+      // immediately.
+      if (isGoawayError(err) || isRetryableNetworkError(err)) {
+        this.logger?.debug("github api: transient network error, retrying");
         try {
           res = await doFetch();
         } catch (retryErr) {
@@ -138,6 +156,35 @@ export class GitHubProjectsClient implements TrackerClient {
       status: res.status,
       duration_ms: Date.now() - startMs,
     });
+    // Retry once on HTTP 502/503 (transient overload) or 429 (rate-limited).
+    // For 429, honor Retry-After (seconds); if absent, retry immediately.
+    // Other non-2xx statuses (400, 401, 403, 500, …) are not retried.
+    if (res.status === 502 || res.status === 503) {
+      this.logger?.debug(`github api: HTTP ${res.status}, retrying`);
+      try {
+        res = await doFetch();
+      } catch (retryErr) {
+        throw new BatonError("github_api_request", String(retryErr), {
+          cause: retryErr,
+        });
+      }
+    } else if (res.status === 429) {
+      const retryAfter = res.headers.get("Retry-After");
+      const delayMs = retryAfter !== null ? parseInt(retryAfter, 10) * 1000 : 0;
+      this.logger?.debug("github api: HTTP 429, retrying", {
+        delay_ms: delayMs,
+      });
+      if (delayMs > 0) {
+        await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+      }
+      try {
+        res = await doFetch();
+      } catch (retryErr) {
+        throw new BatonError("github_api_request", String(retryErr), {
+          cause: retryErr,
+        });
+      }
+    }
     if (!res.ok) {
       throw new BatonError(
         "github_api_status",
