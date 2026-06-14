@@ -145,6 +145,12 @@ export class WorkspaceManager {
           timeoutMs: this.config.hooks.timeoutMs,
         });
         if (!result.ok) {
+          if (!result.treeKillConfirmed) {
+            throw new BatonError(
+              "hook_failed",
+              `after_create hook failed and taskkill did not confirm subtree termination (timedOut=${result.timedOut} code=${result.code}): ${result.output.slice(0, 500)}`,
+            );
+          }
           // SPEC §9.4: after_create failure is fatal to workspace creation;
           // remove the partially prepared directory (SPEC §9.3).
           await this.removeWorkspaceDir(workspacePath);
@@ -169,7 +175,7 @@ export class WorkspaceManager {
     if (!result.ok) {
       throw new BatonError(
         "hook_failed",
-        `before_run hook failed (timedOut=${result.timedOut} code=${result.code}): ${result.output.slice(0, 500)}`,
+        `${!result.treeKillConfirmed ? "before_run hook failed and taskkill did not confirm subtree termination" : "before_run hook failed"} (timedOut=${result.timedOut} code=${result.code}): ${result.output.slice(0, 500)}`,
       );
     }
   }
@@ -187,6 +193,7 @@ export class WorkspaceManager {
         issue_identifier: issue.identifier,
         timed_out: result.timedOut,
         code: result.code,
+        tree_kill_confirmed: result.treeKillConfirmed,
       });
     }
   }
@@ -212,7 +219,9 @@ export class WorkspaceManager {
           issue_identifier: issue.identifier,
           timed_out: result.timedOut,
           code: result.code,
+          tree_kill_confirmed: result.treeKillConfirmed,
         });
+        if (!result.treeKillConfirmed) return;
       }
     }
     await this.removeWorkspaceDir(workspacePath);

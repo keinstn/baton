@@ -51,6 +51,7 @@ describe("runHookScript", () => {
       ok: false,
       timedOut: true,
       code: null,
+      treeKillConfirmed: false,
     });
     expect(Date.now() - start).toBeLessThan(500);
     expect(proc.kill).toHaveBeenCalledWith("SIGKILL");

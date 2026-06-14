@@ -1,10 +1,12 @@
 import { spawn } from "node:child_process";
-import { killWindowsTree } from "../agent/process.js";
+import { setTimeout as delay } from "node:timers/promises";
+import { killWindowsTreeAndWait } from "../agent/process.js";
 
 export interface HookResult {
   ok: boolean;
   code: number | null;
   timedOut: boolean;
+  treeKillConfirmed: boolean;
   /** Combined stdout+stderr, truncated (SPEC §15.4). */
   output: string;
 }
@@ -37,6 +39,8 @@ export function runHookScript(
     let timedOut = false;
     let resolved = false;
     let timeoutGraceTimer: NodeJS.Timeout | null = null;
+    let treeKillConfirmed = true;
+    let treeKillPromise: Promise<boolean> | null = null;
     const append = (chunk: Buffer) => {
       if (output.length < MAX_OUTPUT_BYTES) {
         output += chunk
@@ -60,14 +64,30 @@ export function runHookScript(
       // agents is unsafe here; kill the single bash process on Unix, and the
       // whole tree by PID on Windows so hook children are not orphaned.
       if (platform === "win32" && proc.pid !== undefined) {
-        killWindowsTree(proc.pid, () => proc.kill("SIGKILL"));
+        treeKillPromise = killWindowsTreeAndWait(proc.pid, () =>
+          proc.kill("SIGKILL"),
+        );
         // Mirror the agent subprocess safeguard: Windows can occasionally miss
         // or delay `close` after taskkill, so force-settle the timeout path.
-        timeoutGraceTimer = setTimeout(() => {
+        timeoutGraceTimer = setTimeout(async () => {
+          if (treeKillPromise) {
+            treeKillConfirmed = await Promise.race([
+              treeKillPromise,
+              delay(opts.timeoutGraceMs ?? TIMEOUT_KILL_GRACE_MS).then(
+                () => false,
+              ),
+            ]);
+          }
           proc.stdout.destroy();
           proc.stderr.destroy();
           proc.unref();
-          resolveOnce({ ok: false, code: null, timedOut: true, output });
+          resolveOnce({
+            ok: false,
+            code: null,
+            timedOut: true,
+            treeKillConfirmed,
+            output,
+          });
         }, opts.timeoutGraceMs ?? TIMEOUT_KILL_GRACE_MS);
       } else {
         proc.kill("SIGKILL");
@@ -75,13 +95,20 @@ export function runHookScript(
     }, opts.timeoutMs);
 
     proc.on("error", () => {
-      resolveOnce({ ok: false, code: null, timedOut, output });
+      resolveOnce({
+        ok: false,
+        code: null,
+        timedOut,
+        treeKillConfirmed,
+        output,
+      });
     });
     proc.on("close", (code) => {
       resolveOnce({
         ok: !timedOut && code === 0,
         code,
         timedOut,
+        treeKillConfirmed,
         output,
       });
     });

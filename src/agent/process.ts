@@ -52,7 +52,7 @@ export function killWindowsTree(pid: number, onError: () => void): void {
   });
 }
 
-function killWindowsTreeAndWait(
+export function killWindowsTreeAndWait(
   pid: number,
   onError: () => void,
 ): Promise<boolean> {
@@ -139,8 +139,16 @@ export async function stopSessionProcess(session: AgentSession): Promise<void> {
     return;
   }
   if (process.platform === "win32" && proc.pid !== undefined) {
-    await killWindowsTreeAndWait(proc.pid, () => proc.kill("SIGKILL"));
+    const confirmedKilled = await killWindowsTreeAndWait(proc.pid, () =>
+      proc.kill("SIGKILL"),
+    );
     await waitForProcClosed();
+    if (!confirmedKilled) {
+      throw new BatonError(
+        "process_tree_kill_failed",
+        `taskkill failed for pid ${proc.pid}`,
+      );
+    }
   } else {
     killProcessTree(proc);
     if (procClosed) await procClosed;
