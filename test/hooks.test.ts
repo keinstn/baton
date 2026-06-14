@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { makeTreeKiller } from "../src/agent/tree-killer.js";
+import { makeTreeKiller } from "../src/platform/tree-killer.js";
 
 const { spawnMock } = vi.hoisted(() => ({
   spawnMock: vi.fn(),

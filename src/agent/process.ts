@@ -5,36 +5,9 @@ import { setTimeout as delay } from "node:timers/promises";
 import { ERROR_MESSAGE_MAX_BYTES, STDERR_TAIL_BYTES } from "../constants.js";
 import { BatonError } from "../errors.js";
 import type { Logger } from "../observability/logger.js";
-import { now, toBashPath } from "../util.js";
+import { makeTreeKiller, type TreeKiller } from "../platform/tree-killer.js";
+import { now } from "../util.js";
 import type { AgentEventCallback, AgentSession, TurnResult } from "./runner.js";
-import { makeTreeKiller, type TreeKiller } from "./tree-killer.js";
-
-/** Quote a string for safe interpolation into a bash -lc command line. */
-export function shellQuote(s: string): string {
-  return `'${s.replace(/'/g, "'\\''")}'`;
-}
-
-/**
- * `agent.*.command` is a shell string, so Baton must not rewrite arbitrary
- * commands. On Windows we only normalize the documented simple case: a bare or
- * quoted native absolute executable path, so it becomes runnable via Git Bash.
- */
-export function normalizeCommandForBash(
-  command: string,
-  platform = process.platform,
-): string {
-  if (platform !== "win32") return command;
-  const trimmed = command.trim();
-  if (trimmed === "") return command;
-
-  const quoted =
-    (trimmed.startsWith("'") && trimmed.endsWith("'")) ||
-    (trimmed.startsWith('"') && trimmed.endsWith('"'));
-  const candidate = quoted ? trimmed.slice(1, -1) : trimmed;
-  if (!/^[A-Za-z]:[\\/]/.test(candidate)) return command;
-  if (!quoted && /\s/.test(candidate)) return command;
-  return shellQuote(toBashPath(candidate, platform));
-}
 
 /** SPEC §9.5 Invariant 1: validate the workspace cwd before launching an agent. */
 export async function ensureWorkspaceDir(workspace: string): Promise<void> {

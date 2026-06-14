@@ -2,7 +2,6 @@
 import { watch } from "node:fs";
 import path from "node:path";
 import { createRunner } from "./agent/factory.js";
-import { makeTreeKiller } from "./agent/tree-killer.js";
 import { parseArgs } from "./cli-args.js";
 import { buildConfig, validateDispatchConfig } from "./config/schema.js";
 import { errorCause, isBatonError } from "./errors.js";
@@ -11,6 +10,7 @@ import { Logger } from "./observability/logger.js";
 import { Orchestrator } from "./orchestrator/orchestrator.js";
 import { startupTerminalCleanup } from "./orchestrator/startup.js";
 import { createWorker } from "./orchestrator/worker.js";
+import { makePlatform } from "./platform/platform.js";
 import { GitHubProjectsClient } from "./tracker/github-projects.js";
 import { loadWorkflow } from "./workflow/loader.js";
 import { WorkflowReloader } from "./workflow/reloader.js";
@@ -45,14 +45,14 @@ async function main(): Promise<void> {
   }
 
   const tracker = new GitHubProjectsClient(config.tracker, fetch, logger);
-  // One process-tree killer for the platform, injected into every component
-  // that terminates a subprocess (SPEC §10.3).
-  const treeKiller = makeTreeKiller();
-  const workspaces = new WorkspaceManager(config, logger, treeKiller);
+  // One platform port for the OS, injected into every component that does
+  // OS-specific work (process termination, path translation, dir removal).
+  const platform = makePlatform();
+  const workspaces = new WorkspaceManager(config, logger, platform);
   const { runner, applyReloadedConfig } = createRunner(
     config,
     logger,
-    treeKiller,
+    platform,
   );
 
   // SPEC §6.2: hot-reload WORKFLOW.md, keeping the last known good config on

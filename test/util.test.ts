@@ -1,10 +1,13 @@
 import type { ChildProcess } from "node:child_process";
 import { describe, expect, it, vi } from "vitest";
+import { stopSessionProcess } from "../src/agent/process.js";
 import {
+  isRecord,
+  norm,
   normalizeCommandForBash,
-  stopSessionProcess,
-} from "../src/agent/process.js";
-import { isRecord, norm, now, toBashPath } from "../src/util.js";
+  now,
+  toBashPath,
+} from "../src/util.js";
 
 describe("norm", () => {
   it("trims and lowercases", () => {

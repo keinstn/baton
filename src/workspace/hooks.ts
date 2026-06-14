@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { makeTreeKiller, type TreeKiller } from "../agent/tree-killer.js";
+import { makeTreeKiller, type TreeKiller } from "../platform/tree-killer.js";
 
 export interface HookResult {
   ok: boolean;

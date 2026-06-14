@@ -2,6 +2,7 @@ import { mkdtemp, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import { makePlatform } from "../src/platform/platform.js";
 import {
   sanitizeWorkspaceKey,
   WorkspaceManager,
@@ -86,8 +87,9 @@ describe("workspace creation and hooks (SPEC §9.2, §9.4)", () => {
 
   it("provides bash and native workspace paths for Windows hooks", async () => {
     const root = "C:\\baton\\workspaces";
-    const m = manager("/tmp");
-    expect(m.hookEnv(makeIssue(), `${root}\\repo-1`, "win32")).toMatchObject({
+    const config = makeConfig({ workspace: { root: "/tmp" } });
+    const m = new WorkspaceManager(config, silentLogger, makePlatform("win32"));
+    expect(m.hookEnv(makeIssue(), `${root}\\repo-1`)).toMatchObject({
       BATON_WORKSPACE: "/c/baton/workspaces/repo-1",
       BATON_WORKSPACE_NATIVE: "C:\\baton\\workspaces\\repo-1",
     });
@@ -117,12 +119,15 @@ describe("workspace creation and hooks (SPEC §9.2, §9.4)", () => {
   it("reports cleanup failure when removing a failed after_create workspace fails", async () => {
     const root = await tempRoot();
     const issue = makeIssue();
-    const m = manager(root, {
-      after_create: "echo broken > stale.txt; exit 1",
+    const config = makeConfig({
+      workspace: { root },
+      hooks: { after_create: "echo broken > stale.txt; exit 1" },
     });
-    vi.spyOn(m as never, "removeWorkspaceDir").mockRejectedValueOnce(
+    const platform = makePlatform();
+    vi.spyOn(platform, "removeDir").mockRejectedValueOnce(
       new Error("cleanup failed"),
     );
+    const m = new WorkspaceManager(config, silentLogger, platform);
 
     await expect(m.createForIssue(issue)).rejects.toMatchObject({
       code: "hook_failed",

@@ -1,27 +1,11 @@
-import { mkdir, rm, stat } from "node:fs/promises";
+import { mkdir, stat } from "node:fs/promises";
 import path from "node:path";
-import { setTimeout as delay } from "node:timers/promises";
-import { makeTreeKiller, type TreeKiller } from "../agent/tree-killer.js";
 import type { BatonConfig } from "../config/schema.js";
 import { BatonError } from "../errors.js";
 import type { Logger } from "../observability/logger.js";
+import { makePlatform, type Platform } from "../platform/platform.js";
 import type { Issue } from "../tracker/types.js";
-import { toBashPath } from "../util.js";
 import { runHookScript } from "./hooks.js";
-
-const WORKSPACE_REMOVE_RETRY_MS = 100;
-const WORKSPACE_REMOVE_RETRY_WINDOW_MS = 5000;
-
-function isTransientWindowsRmError(err: unknown): boolean {
-  if (!(err instanceof Error) || !("code" in err)) return false;
-  const code = err.code;
-  return (
-    code === "EBUSY" ||
-    code === "EPERM" ||
-    code === "ENOTEMPTY" ||
-    code === "UNKNOWN"
-  );
-}
 
 /** SPEC §4.2 / §9.5 Invariant 3: only [A-Za-z0-9._-] in workspace names. */
 export function sanitizeWorkspaceKey(identifier: string): string {
@@ -40,7 +24,7 @@ export class WorkspaceManager {
   constructor(
     private config: BatonConfig,
     private readonly logger: Logger,
-    private readonly treeKiller: TreeKiller = makeTreeKiller(),
+    private readonly platform: Platform = makePlatform(),
   ) {
     this.root = path.resolve(config.workspace.root);
   }
@@ -75,11 +59,8 @@ export class WorkspaceManager {
     return p;
   }
 
-  hookEnv(
-    issue: Issue,
-    workspacePath: string,
-    platform = process.platform,
-  ): Record<string, string> {
+  hookEnv(issue: Issue, workspacePath: string): Record<string, string> {
+    const native = this.platform.nativePath(workspacePath);
     return {
       BATON_ISSUE_ID: issue.id,
       BATON_ISSUE_IDENTIFIER: issue.identifier,
@@ -87,30 +68,9 @@ export class WorkspaceManager {
       BATON_ISSUE_REPO: issue.repository,
       BATON_ISSUE_URL: issue.url ?? "",
       BATON_ISSUE_STATUS: issue.state,
-      BATON_WORKSPACE: toBashPath(workspacePath, platform),
-      ...(platform === "win32"
-        ? { BATON_WORKSPACE_NATIVE: workspacePath }
-        : {}),
+      BATON_WORKSPACE: this.platform.toBashPath(workspacePath),
+      ...(native ? { BATON_WORKSPACE_NATIVE: native } : {}),
     };
-  }
-
-  private async removeWorkspaceDir(workspacePath: string): Promise<void> {
-    const deadline = Date.now() + WORKSPACE_REMOVE_RETRY_WINDOW_MS;
-    for (;;) {
-      try {
-        await rm(workspacePath, { recursive: true, force: true });
-        return;
-      } catch (err) {
-        if (
-          process.platform !== "win32" ||
-          !isTransientWindowsRmError(err) ||
-          Date.now() >= deadline
-        ) {
-          throw err;
-        }
-        await delay(WORKSPACE_REMOVE_RETRY_MS);
-      }
-    }
   }
 
   private async createFreshWorkspace(
@@ -126,14 +86,14 @@ export class WorkspaceManager {
       cwd: workspacePath,
       env: this.hookEnv(issue, workspacePath),
       timeoutMs: this.config.hooks.timeoutMs,
-      treeKiller: this.treeKiller,
+      treeKiller: this.platform.treeKiller,
     });
     if (result.ok) return;
 
     // SPEC §9.4: after_create failure is fatal to workspace creation;
     // remove the partially prepared directory (SPEC §9.3).
     try {
-      await this.removeWorkspaceDir(workspacePath);
+      await this.platform.removeDir(workspacePath);
     } catch (err) {
       throw new BatonError(
         "hook_failed",
@@ -183,7 +143,7 @@ export class WorkspaceManager {
       cwd: workspacePath,
       env: this.hookEnv(issue, workspacePath),
       timeoutMs: this.config.hooks.timeoutMs,
-      treeKiller: this.treeKiller,
+      treeKiller: this.platform.treeKiller,
     });
     if (!result.ok) {
       throw new BatonError(
@@ -200,7 +160,7 @@ export class WorkspaceManager {
       cwd: workspacePath,
       env: this.hookEnv(issue, workspacePath),
       timeoutMs: this.config.hooks.timeoutMs,
-      treeKiller: this.treeKiller,
+      treeKiller: this.platform.treeKiller,
     });
     if (!result.ok) {
       this.logger.warn("after_run hook failed (ignored)", {
@@ -226,7 +186,7 @@ export class WorkspaceManager {
         cwd: workspacePath,
         env: this.hookEnv(issue, workspacePath),
         timeoutMs: this.config.hooks.timeoutMs,
-        treeKiller: this.treeKiller,
+        treeKiller: this.platform.treeKiller,
       });
       if (!result.ok) {
         this.logger.warn("before_remove hook failed (ignored)", {
@@ -236,7 +196,7 @@ export class WorkspaceManager {
         });
       }
     }
-    await this.removeWorkspaceDir(workspacePath);
+    await this.platform.removeDir(workspacePath);
     this.logger.info("workspace removed", {
       issue_identifier: issue.identifier,
       workspace: workspacePath,
