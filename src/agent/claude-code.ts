@@ -4,11 +4,11 @@ import {
   ERROR_MESSAGE_MAX_BYTES,
 } from "../constants.js";
 import type { Logger } from "../observability/logger.js";
-import { now } from "../util.js";
+import { makePlatform, type Platform } from "../platform/platform.js";
+import { now, shellQuote } from "../util.js";
 import {
   ensureWorkspaceDir,
   runSubprocess,
-  shellQuote,
   stopSessionProcess,
 } from "./process.js";
 import type {
@@ -33,6 +33,7 @@ export class ClaudeCodeRunner implements AgentRunner {
   constructor(
     private cfg: ClaudeCodeConfig,
     private readonly logger?: Logger,
+    private readonly platform: Platform = makePlatform(),
   ) {}
 
   /** Apply a new config; takes effect on the next turn dispatch (SPEC §6.2). */
@@ -44,7 +45,7 @@ export class ClaudeCodeRunner implements AgentRunner {
    *  A non-null `resumeId` adds `--resume` so continuation turns reuse the session. */
   buildCommand(resumeId?: string | null): string {
     const parts: string[] = [
-      this.cfg.command,
+      this.platform.normalizeCommand(this.cfg.command),
       "-p",
       "--output-format",
       "stream-json",
@@ -79,7 +80,14 @@ export class ClaudeCodeRunner implements AgentRunner {
 
   async startSession(workspace: string): Promise<AgentSession> {
     await ensureWorkspaceDir(workspace);
-    return { workspace, agentSessionId: null, proc: null, turnNumber: 0 };
+    return {
+      workspace,
+      agentSessionId: null,
+      proc: null,
+      procClosed: null,
+      procForceClose: null,
+      turnNumber: 0,
+    };
   }
 
   runTurn(
@@ -99,6 +107,7 @@ export class ClaudeCodeRunner implements AgentRunner {
       onEvent,
       onLine: (line) => this.handleLine(session, line, onEvent),
       logger: this.logger,
+      treeKiller: this.platform.treeKiller,
     });
   }
 
@@ -176,7 +185,7 @@ export class ClaudeCodeRunner implements AgentRunner {
   }
 
   async stopSession(session: AgentSession): Promise<void> {
-    stopSessionProcess(session);
+    await stopSessionProcess(session, this.platform.treeKiller);
   }
 }
 

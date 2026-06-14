@@ -1,6 +1,7 @@
 import { type BatonConfig, buildConfig } from "../src/config/schema.js";
 import { Logger } from "../src/observability/logger.js";
 import type { Issue } from "../src/tracker/types.js";
+import { toBashPath as toGitBashPath } from "../src/util.js";
 
 export function makeIssue(overrides: Partial<Issue> = {}): Issue {
   return {
@@ -43,3 +44,8 @@ export function makeConfig(
 }
 
 export const silentLogger = new Logger({}, () => {});
+
+/** Convert an absolute path to a POSIX path for use inside `bash -lc` strings on Windows (Git Bash). */
+export function toBashPath(p: string): string {
+  return toGitBashPath(p);
+}

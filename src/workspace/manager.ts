@@ -1,8 +1,9 @@
-import { mkdir, rm, stat } from "node:fs/promises";
+import { mkdir, stat } from "node:fs/promises";
 import path from "node:path";
 import type { BatonConfig } from "../config/schema.js";
 import { BatonError } from "../errors.js";
 import type { Logger } from "../observability/logger.js";
+import { makePlatform, type Platform } from "../platform/platform.js";
 import type { Issue } from "../tracker/types.js";
 import { runHookScript } from "./hooks.js";
 
@@ -23,6 +24,7 @@ export class WorkspaceManager {
   constructor(
     private config: BatonConfig,
     private readonly logger: Logger,
+    private readonly platform: Platform = makePlatform(),
   ) {
     this.root = path.resolve(config.workspace.root);
   }
@@ -58,6 +60,7 @@ export class WorkspaceManager {
   }
 
   hookEnv(issue: Issue, workspacePath: string): Record<string, string> {
+    const native = this.platform.nativePath(workspacePath);
     return {
       BATON_ISSUE_ID: issue.id,
       BATON_ISSUE_IDENTIFIER: issue.identifier,
@@ -65,8 +68,43 @@ export class WorkspaceManager {
       BATON_ISSUE_REPO: issue.repository,
       BATON_ISSUE_URL: issue.url ?? "",
       BATON_ISSUE_STATUS: issue.state,
-      BATON_WORKSPACE: workspacePath,
+      BATON_WORKSPACE: this.platform.toBashPath(workspacePath),
+      ...(native ? { BATON_WORKSPACE_NATIVE: native } : {}),
     };
+  }
+
+  private async createFreshWorkspace(
+    issue: Issue,
+    workspacePath: string,
+    log: Logger,
+  ): Promise<void> {
+    await mkdir(workspacePath, { recursive: true });
+    if (!this.config.hooks.afterCreate) return;
+
+    log.info("running after_create hook", { workspace: workspacePath });
+    const result = await runHookScript(this.config.hooks.afterCreate, {
+      cwd: workspacePath,
+      env: this.hookEnv(issue, workspacePath),
+      timeoutMs: this.config.hooks.timeoutMs,
+      treeKiller: this.platform.treeKiller,
+    });
+    if (result.ok) return;
+
+    // SPEC §9.4: after_create failure is fatal to workspace creation;
+    // remove the partially prepared directory (SPEC §9.3).
+    try {
+      await this.platform.removeDir(workspacePath);
+    } catch (err) {
+      throw new BatonError(
+        "hook_failed",
+        `after_create hook failed and workspace cleanup failed: ${String(err)}`,
+        { cause: err },
+      );
+    }
+    throw new BatonError(
+      "hook_failed",
+      `after_create hook failed (timedOut=${result.timedOut} code=${result.code}): ${result.output.slice(0, 500)}`,
+    );
   }
 
   /** Create or reuse the workspace for an issue (SPEC §9.2). */
@@ -85,33 +123,15 @@ export class WorkspaceManager {
     } catch {
       existing = null;
     }
-    if (existing !== null) {
-      if (!existing.isDirectory()) {
-        throw new BatonError(
-          "workspace_not_directory",
-          `workspace path exists and is not a directory: ${workspacePath}`,
-        );
-      }
-    } else {
-      await mkdir(workspacePath, { recursive: true });
+    if (existing !== null && !existing.isDirectory()) {
+      throw new BatonError(
+        "workspace_not_directory",
+        `workspace path exists and is not a directory: ${workspacePath}`,
+      );
+    }
+    if (existing === null) {
       createdNow = true;
-      if (this.config.hooks.afterCreate) {
-        log.info("running after_create hook", { workspace: workspacePath });
-        const result = await runHookScript(this.config.hooks.afterCreate, {
-          cwd: workspacePath,
-          env: this.hookEnv(issue, workspacePath),
-          timeoutMs: this.config.hooks.timeoutMs,
-        });
-        if (!result.ok) {
-          // SPEC §9.4: after_create failure is fatal to workspace creation;
-          // remove the partially prepared directory (SPEC §9.3).
-          await rm(workspacePath, { recursive: true, force: true });
-          throw new BatonError(
-            "hook_failed",
-            `after_create hook failed (timedOut=${result.timedOut} code=${result.code}): ${result.output.slice(0, 500)}`,
-          );
-        }
-      }
+      await this.createFreshWorkspace(issue, workspacePath, log);
     }
     return { path: workspacePath, workspaceKey, createdNow };
   }
@@ -123,6 +143,7 @@ export class WorkspaceManager {
       cwd: workspacePath,
       env: this.hookEnv(issue, workspacePath),
       timeoutMs: this.config.hooks.timeoutMs,
+      treeKiller: this.platform.treeKiller,
     });
     if (!result.ok) {
       throw new BatonError(
@@ -139,6 +160,7 @@ export class WorkspaceManager {
       cwd: workspacePath,
       env: this.hookEnv(issue, workspacePath),
       timeoutMs: this.config.hooks.timeoutMs,
+      treeKiller: this.platform.treeKiller,
     });
     if (!result.ok) {
       this.logger.warn("after_run hook failed (ignored)", {
@@ -164,6 +186,7 @@ export class WorkspaceManager {
         cwd: workspacePath,
         env: this.hookEnv(issue, workspacePath),
         timeoutMs: this.config.hooks.timeoutMs,
+        treeKiller: this.platform.treeKiller,
       });
       if (!result.ok) {
         this.logger.warn("before_remove hook failed (ignored)", {
@@ -173,7 +196,7 @@ export class WorkspaceManager {
         });
       }
     }
-    await rm(workspacePath, { recursive: true, force: true });
+    await this.platform.removeDir(workspacePath);
     this.logger.info("workspace removed", {
       issue_identifier: issue.identifier,
       workspace: workspacePath,

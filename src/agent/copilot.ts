@@ -2,11 +2,11 @@ import { randomUUID } from "node:crypto";
 import type { CopilotConfig } from "../config/schema.js";
 import { DISPLAY_TEXT_MAX_BYTES } from "../constants.js";
 import type { Logger } from "../observability/logger.js";
-import { now } from "../util.js";
+import { makePlatform, type Platform } from "../platform/platform.js";
+import { now, shellQuote } from "../util.js";
 import {
   ensureWorkspaceDir,
   runSubprocess,
-  shellQuote,
   stopSessionProcess,
 } from "./process.js";
 import type {
@@ -44,6 +44,7 @@ export class CopilotRunner implements AgentRunner {
   constructor(
     private cfg: CopilotConfig,
     private readonly logger?: Logger,
+    private readonly platform: Platform = makePlatform(),
   ) {}
 
   /** Apply a new config; takes effect on the next turn dispatch (SPEC §6.2). */
@@ -56,7 +57,7 @@ export class CopilotRunner implements AgentRunner {
    *  session, `resume=false` creates a new session pinned to that id. */
   buildCommand(prompt: string, sessionId: string, resume: boolean): string {
     const parts: string[] = [
-      this.cfg.command,
+      this.platform.normalizeCommand(this.cfg.command),
       "-p",
       shellQuote(prompt),
       "--output-format",
@@ -90,7 +91,14 @@ export class CopilotRunner implements AgentRunner {
 
   async startSession(workspace: string): Promise<AgentSession> {
     await ensureWorkspaceDir(workspace);
-    return { workspace, agentSessionId: null, proc: null, turnNumber: 0 };
+    return {
+      workspace,
+      agentSessionId: null,
+      proc: null,
+      procClosed: null,
+      procForceClose: null,
+      turnNumber: 0,
+    };
   }
 
   async runTurn(
@@ -154,6 +162,7 @@ export class CopilotRunner implements AgentRunner {
     return runSubprocess(session, {
       command: cmdline,
       timeoutMs: this.cfg.turnTimeoutMs,
+      treeKiller: this.platform.treeKiller,
       onEvent,
       onLine: (line) => {
         const r = this.handleLine(
@@ -281,7 +290,7 @@ export class CopilotRunner implements AgentRunner {
   }
 
   async stopSession(session: AgentSession): Promise<void> {
-    stopSessionProcess(session);
+    await stopSessionProcess(session, this.platform.treeKiller);
   }
 }
 

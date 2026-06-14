@@ -4,18 +4,18 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CopilotRunner } from "../src/agent/copilot.js";
 import type { AgentEvent } from "../src/agent/runner.js";
-import { makeConfig } from "./helpers.js";
+import { makeConfig, toBashPath } from "./helpers.js";
 
 async function fakeCopilot(
   script: string,
 ): Promise<{ command: string; workspace: string; dir: string }> {
   const dir = await mkdtemp(join(tmpdir(), "baton-cp-"));
-  const command = join(dir, "fake-copilot");
-  await writeFile(command, `#!/usr/bin/env bash\n${script}\n`);
-  await chmod(command, 0o755);
+  const commandFs = join(dir, "fake-copilot");
+  await writeFile(commandFs, `#!/usr/bin/env bash\n${script}\n`);
+  await chmod(commandFs, 0o755);
   const workspace = join(dir, "ws");
   await mkdir(workspace);
-  return { command, workspace, dir };
+  return { command: toBashPath(commandFs), workspace, dir };
 }
 
 function runner(command: string, overrides: Record<string, unknown> = {}) {
@@ -190,14 +190,16 @@ describe("CopilotRunner.runTurn JSONL parsing (SPEC §10.2)", () => {
 
   it("resumes the same session id on continuation turns (SPEC §10.1, §17.5)", async () => {
     const dir = await mkdtemp(join(tmpdir(), "baton-cp-"));
-    const argsLog = join(dir, "args.log");
-    const command = join(dir, "fake-copilot");
+    const argsLogFs = join(dir, "args.log");
+    const commandFs = join(dir, "fake-copilot");
+    const argsLog = toBashPath(argsLogFs);
+    const command = toBashPath(commandFs);
     await writeFile(
-      command,
-      `#!/usr/bin/env bash\necho "$@" >> ${argsLog}\n` +
+      commandFs,
+      `#!/usr/bin/env bash\necho "$@" >> "${argsLog}"\n` +
         `echo '{"type":"result","exitCode":0,"sessionId":"x"}'\n`,
     );
-    await chmod(command, 0o755);
+    await chmod(commandFs, 0o755);
     const workspace = join(dir, "ws");
     await mkdir(workspace);
 
@@ -210,7 +212,7 @@ describe("CopilotRunner.runTurn JSONL parsing (SPEC §10.2)", () => {
     const second: AgentEvent[] = [];
     await r.runTurn(session, "second", (e) => second.push(e));
 
-    const lines = (await readFile(argsLog, "utf8")).trim().split("\n");
+    const lines = (await readFile(argsLogFs, "utf8")).trim().split("\n");
     expect(lines[0]).toContain(`--session-id ${uuid}`);
     expect(lines[0]).not.toContain("--resume");
     expect(lines[1]).toContain(`--resume ${uuid}`);
@@ -224,14 +226,16 @@ describe("CopilotRunner.runTurn JSONL parsing (SPEC §10.2)", () => {
 
   it("falls back to a fresh session when --resume fails on a continuation turn (SPEC §10.2)", async () => {
     const dir = await mkdtemp(join(tmpdir(), "baton-cp-"));
-    const argsLog = join(dir, "args.log");
-    const command = join(dir, "fake-copilot");
+    const argsLogFs = join(dir, "args.log");
+    const commandFs = join(dir, "fake-copilot");
+    const argsLog = toBashPath(argsLogFs);
+    const command = toBashPath(commandFs);
     // Fail (exit 1) when --resume is present, succeed otherwise. Logs argv on
     // every invocation so the test can verify the retry uses --session-id.
     await writeFile(
-      command,
+      commandFs,
       `#!/usr/bin/env bash
-echo "$@" >> ${argsLog}
+echo "$@" >> "${argsLog}"
 for arg in "$@"; do
   if [ "$arg" = "--resume" ]; then
     echo '{"type":"result","exitCode":1,"sessionId":"x"}'
@@ -242,7 +246,7 @@ echo '{"type":"result","exitCode":0,"sessionId":"x"}'
 exit 0
 `,
     );
-    await chmod(command, 0o755);
+    await chmod(commandFs, 0o755);
     const workspace = join(dir, "ws");
     await mkdir(workspace);
 
@@ -257,7 +261,7 @@ exit 0
     expect(result.ok).toBe(true);
     expect(session.agentSessionId).not.toBe(firstUuid);
 
-    const lines = (await readFile(argsLog, "utf8")).trim().split("\n");
+    const lines = (await readFile(argsLogFs, "utf8")).trim().split("\n");
     // 1: first turn (--session-id <firstUuid>)
     // 2: second turn attempt 1 (--resume <firstUuid>) → fails
     // 3: second turn retry (--session-id <newUuid>) → succeeds

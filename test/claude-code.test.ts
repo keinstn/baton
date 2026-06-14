@@ -4,18 +4,21 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ClaudeCodeRunner, shellQuote } from "../src/agent/claude-code.js";
 import type { AgentEvent } from "../src/agent/runner.js";
-import { makeConfig } from "./helpers.js";
+import { makeConfig, toBashPath } from "./helpers.js";
 
 async function fakeClaude(
   script: string,
 ): Promise<{ command: string; workspace: string }> {
   const dir = await mkdtemp(join(tmpdir(), "baton-cc-"));
-  const command = join(dir, "fake-claude");
-  await writeFile(command, `#!/usr/bin/env bash\ncat >/dev/null\n${script}\n`);
-  await chmod(command, 0o755);
+  const commandFs = join(dir, "fake-claude");
+  await writeFile(
+    commandFs,
+    `#!/usr/bin/env bash\ncat >/dev/null\n${script}\n`,
+  );
+  await chmod(commandFs, 0o755);
   const workspace = join(dir, "ws");
   await (await import("node:fs/promises")).mkdir(workspace);
-  return { command, workspace };
+  return { command: toBashPath(commandFs), workspace };
 }
 
 function runner(command: string, overrides: Record<string, unknown> = {}) {
@@ -149,15 +152,17 @@ describe("runTurn stream-json parsing (SPEC §10.1)", () => {
 
   it("resumes the session on continuation turns and emits session_started once (SPEC §10.1, §17.5)", async () => {
     const dir = await mkdtemp(join(tmpdir(), "baton-cc-"));
-    const argsLog = join(dir, "args.log");
-    const command = join(dir, "fake-claude");
+    const argsLogFs = join(dir, "args.log");
+    const commandFs = join(dir, "fake-claude");
+    const argsLog = toBashPath(argsLogFs);
+    const command = toBashPath(commandFs);
     await writeFile(
-      command,
-      `#!/usr/bin/env bash\ncat >/dev/null\necho "$@" >> ${argsLog}\n` +
+      commandFs,
+      `#!/usr/bin/env bash\ncat >/dev/null\necho "$@" >> "${argsLog}"\n` +
         `echo '{"type":"system","subtype":"init","session_id":"sess-xyz"}'\n` +
         `echo '{"type":"result","subtype":"success","is_error":false,"result":"ok"}'\n`,
     );
-    await chmod(command, 0o755);
+    await chmod(commandFs, 0o755);
     const workspace = join(dir, "ws");
     await mkdir(workspace);
 
@@ -168,7 +173,7 @@ describe("runTurn stream-json parsing (SPEC §10.1)", () => {
     const second: AgentEvent[] = [];
     await r.runTurn(session, "second turn", (e) => second.push(e));
 
-    const lines = (await readFile(argsLog, "utf8")).trim().split("\n");
+    const lines = (await readFile(argsLogFs, "utf8")).trim().split("\n");
     expect(lines[0]).not.toContain("--resume");
     expect(lines[1]).toContain("--resume sess-xyz");
 

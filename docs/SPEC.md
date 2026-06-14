@@ -273,7 +273,9 @@ top-level keys (for example `server`, Section 13.7).
 - `timeout_ms` (integer), default `60000`.
 - Hooks run with the workspace directory as cwd and receive these environment variables:
   `BATON_ISSUE_ID`, `BATON_ISSUE_IDENTIFIER`, `BATON_ISSUE_NUMBER`, `BATON_ISSUE_REPO`,
-  `BATON_ISSUE_URL`, `BATON_ISSUE_STATUS`, `BATON_WORKSPACE`.
+  `BATON_ISSUE_URL`, `BATON_ISSUE_STATUS`, `BATON_WORKSPACE`. When hooks run under Git Bash on
+  Windows, `BATON_WORKSPACE` uses Git Bash path syntax (`/c/...`) and `BATON_WORKSPACE_NATIVE`
+  exposes the native Windows path (`C:\...`).
 
 #### 5.3.5 `agent` (object)
 
@@ -939,7 +941,7 @@ logged in for the SSH user).
 | Client-side tracker tool | OPTIONAL `linear_graphql` tool | None; agent uses `gh` CLI (or GitHub MCP) via tool allowlist |
 | Token accounting | Codex `tokenUsage` payloads | Agent result/usage payloads; same absolute-vs-delta rules |
 | Workspace default root | `<tmp>/symphony_workspaces` | `<tmp>/baton_workspaces` |
-| Hook env vars | (unspecified) | `BATON_ISSUE_*`, `BATON_WORKSPACE` specified |
+| Hook env vars | (unspecified) | `BATON_ISSUE_*`, `BATON_WORKSPACE` specified; Windows also gets `BATON_WORKSPACE_NATIVE` |
 | Webhooks | — | OPTIONAL `projects_v2_item` → refresh trigger |
 
 Everything not listed above — orchestration state machine, polling/retry/reconciliation math,

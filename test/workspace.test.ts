@@ -1,12 +1,13 @@
 import { mkdtemp, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { makePlatform } from "../src/platform/platform.js";
 import {
   sanitizeWorkspaceKey,
   WorkspaceManager,
 } from "../src/workspace/manager.js";
-import { makeConfig, makeIssue, silentLogger } from "./helpers.js";
+import { makeConfig, makeIssue, silentLogger, toBashPath } from "./helpers.js";
 
 async function tempRoot(): Promise<string> {
   return mkdtemp(join(tmpdir(), "baton-ws-"));
@@ -77,11 +78,21 @@ describe("workspace creation and hooks (SPEC §9.2, §9.4)", () => {
     const root = await tempRoot();
     const m = manager(root, {
       after_create:
-        'echo "$BATON_ISSUE_IDENTIFIER:$BATON_ISSUE_NUMBER" > meta.txt',
+        'printf "%s:%s:%s" "$BATON_ISSUE_IDENTIFIER" "$BATON_ISSUE_NUMBER" "$BATON_WORKSPACE" > meta.txt',
     });
     await m.createForIssue(makeIssue({ identifier: "repo-7", number: 7 }));
     const content = await readFile(join(root, "repo-7", "meta.txt"), "utf8");
-    expect(content.trim()).toBe("repo-7:7");
+    expect(content.trim()).toBe(`repo-7:7:${toBashPath(join(root, "repo-7"))}`);
+  });
+
+  it("provides bash and native workspace paths for Windows hooks", async () => {
+    const root = "C:\\baton\\workspaces";
+    const config = makeConfig({ workspace: { root: "/tmp" } });
+    const m = new WorkspaceManager(config, silentLogger, makePlatform("win32"));
+    expect(m.hookEnv(makeIssue(), `${root}\\repo-1`)).toMatchObject({
+      BATON_WORKSPACE: "/c/baton/workspaces/repo-1",
+      BATON_WORKSPACE_NATIVE: "C:\\baton\\workspaces\\repo-1",
+    });
   });
 
   it("after_create failure aborts creation and removes the directory", async () => {
@@ -102,6 +113,25 @@ describe("workspace creation and hooks (SPEC §9.2, §9.4)", () => {
     const m = new WorkspaceManager(config, silentLogger);
     await expect(m.createForIssue(makeIssue())).rejects.toMatchObject({
       code: "hook_failed",
+    });
+  });
+
+  it("reports cleanup failure when removing a failed after_create workspace fails", async () => {
+    const root = await tempRoot();
+    const issue = makeIssue();
+    const config = makeConfig({
+      workspace: { root },
+      hooks: { after_create: "echo broken > stale.txt; exit 1" },
+    });
+    const platform = makePlatform();
+    vi.spyOn(platform, "removeDir").mockRejectedValueOnce(
+      new Error("cleanup failed"),
+    );
+    const m = new WorkspaceManager(config, silentLogger, platform);
+
+    await expect(m.createForIssue(issue)).rejects.toMatchObject({
+      code: "hook_failed",
+      message: expect.stringContaining("workspace cleanup failed"),
     });
   });
 
@@ -150,7 +180,7 @@ describe("applyConfig (SPEC §6.2 hot-reload)", () => {
     const markerPath = join(root, "hook-ran");
     const updatedConfig = makeConfig({
       workspace: { root },
-      hooks: { after_create: `touch '${markerPath}'` },
+      hooks: { after_create: 'touch "$BATON_WORKSPACE/../hook-ran"' },
     });
     m.applyConfig(updatedConfig);
 

@@ -1,5 +1,5 @@
 import os from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   buildConfig,
@@ -64,9 +64,14 @@ describe("workspace.root path handling (SPEC §5.3.3)", () => {
     expect(config.workspace.root).toBe(join(os.homedir(), "baton-ws"));
   });
 
+  it("expands Windows-style ~\\ paths", () => {
+    const config = makeConfig({ workspace: { root: "~\\baton-ws" } });
+    expect(config.workspace.root).toBe(join(os.homedir(), "baton-ws"));
+  });
+
   it("resolves relative paths against the workflow directory", () => {
     const config = makeConfig({ workspace: { root: "ws" } }, "/srv/project");
-    expect(config.workspace.root).toBe("/srv/project/ws");
+    expect(config.workspace.root).toBe(resolve("/srv/project", "ws"));
   });
 });
 

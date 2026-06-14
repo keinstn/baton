@@ -40,6 +40,12 @@ follows the Symphony spec unchanged.
 - The coding agent binary matching your `agent.kind`:
   - `claude_code` → [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)
   - `copilot` → [GitHub Copilot CLI](https://githubnext.com/projects/copilot-cli)
+- On **Windows**: [Git Bash](https://git-scm.com/downloads) — Baton runs every agent turn and
+  workspace hook via `bash -lc`. The agent CLI must be reachable from Git Bash's login `PATH`;
+  if it is not, set `agent.<kind>.command` to a standalone absolute path. Native Windows paths
+  like `C:\Tools\claude.exe` are normalized automatically; quote them if the path contains spaces.
+  Hooks receive `BATON_WORKSPACE` in Git Bash path form and, on Windows, also
+  `BATON_WORKSPACE_NATIVE` for native-tool interop.
 
 **Build from source**
 
