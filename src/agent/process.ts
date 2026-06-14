@@ -139,11 +139,12 @@ export async function stopSessionProcess(session: AgentSession): Promise<void> {
     return;
   }
   if (process.platform === "win32" && proc.pid !== undefined) {
-    const confirmedKilled = await killWindowsTreeAndWait(proc.pid, () =>
-      proc.kill("SIGKILL"),
-    );
+    let fallbackKillSent = false;
+    const confirmedKilled = await killWindowsTreeAndWait(proc.pid, () => {
+      fallbackKillSent = proc.kill("SIGKILL");
+    });
     await waitForProcClosed();
-    if (!confirmedKilled) {
+    if (!confirmedKilled && fallbackKillSent) {
       throw new BatonError(
         "process_tree_kill_failed",
         `taskkill failed for pid ${proc.pid}`,

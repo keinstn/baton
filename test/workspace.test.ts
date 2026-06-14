@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, stat } from "node:fs/promises";
+import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -71,6 +71,29 @@ describe("workspace creation and hooks (SPEC §9.2, §9.4)", () => {
     await m.createForIssue(issue);
     const content = await readFile(join(root, "repo-1", "created.txt"), "utf8");
     expect(content.trim().split("\n")).toHaveLength(1);
+  });
+
+  it("recreates workspaces left behind by failed after_create hooks", async () => {
+    const root = await tempRoot();
+    const workspacePath = join(root, "repo-1");
+    const m = manager(root, { after_create: "echo fresh > created.txt" });
+    await m.createForIssue(makeIssue());
+    await writeFile(
+      join(workspacePath, ".baton-after-create-failed"),
+      "stale\n",
+    );
+    await writeFile(join(workspacePath, "stale.txt"), "stale\n");
+
+    const recreated = await m.createForIssue(makeIssue());
+
+    expect(recreated.createdNow).toBe(true);
+    expect(await exists(join(workspacePath, "stale.txt"))).toBe(false);
+    expect(await readFile(join(workspacePath, "created.txt"), "utf8")).toBe(
+      "fresh\n",
+    );
+    expect(
+      await exists(join(workspacePath, ".baton-after-create-failed")),
+    ).toBe(false);
   });
 
   it("exposes BATON_* environment variables to hooks", async () => {

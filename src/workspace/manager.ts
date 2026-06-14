@@ -1,4 +1,4 @@
-import { mkdir, rm, stat } from "node:fs/promises";
+import { mkdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import type { BatonConfig } from "../config/schema.js";
@@ -10,6 +10,7 @@ import { runHookScript } from "./hooks.js";
 
 const WORKSPACE_REMOVE_RETRY_MS = 100;
 const WORKSPACE_REMOVE_RETRY_WINDOW_MS = 5000;
+const INVALID_AFTER_CREATE_MARKER = ".baton-after-create-failed";
 
 function isTransientWindowsRmError(err: unknown): boolean {
   if (!(err instanceof Error) || !("code" in err)) return false;
@@ -111,6 +112,57 @@ export class WorkspaceManager {
     }
   }
 
+  private invalidAfterCreateMarkerPath(workspacePath: string): string {
+    return path.join(workspacePath, INVALID_AFTER_CREATE_MARKER);
+  }
+
+  private async hasInvalidAfterCreateMarker(
+    workspacePath: string,
+  ): Promise<boolean> {
+    try {
+      return (
+        await stat(this.invalidAfterCreateMarkerPath(workspacePath))
+      ).isFile();
+    } catch {
+      return false;
+    }
+  }
+
+  private async createFreshWorkspace(
+    issue: Issue,
+    workspacePath: string,
+    log: Logger,
+  ): Promise<void> {
+    await mkdir(workspacePath, { recursive: true });
+    if (!this.config.hooks.afterCreate) return;
+
+    log.info("running after_create hook", { workspace: workspacePath });
+    const result = await runHookScript(this.config.hooks.afterCreate, {
+      cwd: workspacePath,
+      env: this.hookEnv(issue, workspacePath),
+      timeoutMs: this.config.hooks.timeoutMs,
+    });
+    if (result.ok) return;
+
+    if (!result.treeKillConfirmed) {
+      await writeFile(
+        this.invalidAfterCreateMarkerPath(workspacePath),
+        "after_create failed without confirmed Windows tree termination\n",
+      );
+      throw new BatonError(
+        "hook_failed",
+        `after_create hook failed and taskkill did not confirm subtree termination (timedOut=${result.timedOut} code=${result.code}): ${result.output.slice(0, 500)}`,
+      );
+    }
+    // SPEC §9.4: after_create failure is fatal to workspace creation;
+    // remove the partially prepared directory (SPEC §9.3).
+    await this.removeWorkspaceDir(workspacePath);
+    throw new BatonError(
+      "hook_failed",
+      `after_create hook failed (timedOut=${result.timedOut} code=${result.code}): ${result.output.slice(0, 500)}`,
+    );
+  }
+
   /** Create or reuse the workspace for an issue (SPEC §9.2). */
   async createForIssue(issue: Issue): Promise<Workspace> {
     const workspacePath = this.pathFor(issue.identifier);
@@ -134,32 +186,20 @@ export class WorkspaceManager {
           `workspace path exists and is not a directory: ${workspacePath}`,
         );
       }
-    } else {
-      await mkdir(workspacePath, { recursive: true });
-      createdNow = true;
-      if (this.config.hooks.afterCreate) {
-        log.info("running after_create hook", { workspace: workspacePath });
-        const result = await runHookScript(this.config.hooks.afterCreate, {
-          cwd: workspacePath,
-          env: this.hookEnv(issue, workspacePath),
-          timeoutMs: this.config.hooks.timeoutMs,
-        });
-        if (!result.ok) {
-          if (!result.treeKillConfirmed) {
-            throw new BatonError(
-              "hook_failed",
-              `after_create hook failed and taskkill did not confirm subtree termination (timedOut=${result.timedOut} code=${result.code}): ${result.output.slice(0, 500)}`,
-            );
-          }
-          // SPEC §9.4: after_create failure is fatal to workspace creation;
-          // remove the partially prepared directory (SPEC §9.3).
-          await this.removeWorkspaceDir(workspacePath);
-          throw new BatonError(
-            "hook_failed",
-            `after_create hook failed (timedOut=${result.timedOut} code=${result.code}): ${result.output.slice(0, 500)}`,
-          );
-        }
+      if (await this.hasInvalidAfterCreateMarker(workspacePath)) {
+        log.warn(
+          "discarding workspace left behind by failed after_create hook",
+          {
+            workspace: workspacePath,
+          },
+        );
+        await this.removeWorkspaceDir(workspacePath);
+        existing = null;
       }
+    }
+    if (existing === null) {
+      createdNow = true;
+      await this.createFreshWorkspace(issue, workspacePath, log);
     }
     return { path: workspacePath, workspaceKey, createdNow };
   }
