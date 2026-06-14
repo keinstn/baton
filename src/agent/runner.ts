@@ -30,6 +30,10 @@ export interface AgentSession {
    *  stopSession() can await real shutdown before after_run hooks or workspace
    *  cleanup proceed. */
   procClosed: Promise<void> | null;
+  /** Force-settle an in-flight turn when a stop is requested but Windows has not
+   *  delivered the child `close` event within the grace window after taskkill.
+   *  Without it, aborting a running turn would block the worker on `runTurn`. */
+  procForceClose: (() => void) | null;
   /** Count of turns already run on this session; the adapter increments it
    *  before each turn so continuation turns resume and skip session_started
    *  (SPEC §10.1). */

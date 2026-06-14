@@ -80,6 +80,7 @@ export function createWorker(deps: WorkerDeps): RunWorker {
           turn === 1 ? firstPrompt : continuationGuidance(current, turn);
 
         const result = await deps.runner.runTurn(session, prompt, onEvent);
+        if (signal?.aborted) break; // stopSession may have force-settled the turn
         if (!result.ok) {
           throw new BatonError(
             "turn_failed",

@@ -88,6 +88,7 @@ describe("stopSessionProcess", () => {
       agentSessionId: null,
       proc,
       procClosed,
+      procForceClose: null,
       turnNumber: 0,
     };
     let settled = false;
@@ -115,6 +116,7 @@ describe("stopSessionProcess", () => {
       agentSessionId: null,
       proc,
       procClosed: Promise.resolve(),
+      procForceClose: null,
       turnNumber: 0,
     };
     await stopSessionProcess(session);
@@ -123,7 +125,7 @@ describe("stopSessionProcess", () => {
     expect(session.procClosed).toBeNull();
   });
 
-  it("bounds the wait on Windows when the child close never arrives", async () => {
+  it("force-settles via procForceClose on Windows when close never arrives", async () => {
     vi.useFakeTimers();
     vi.spyOn(process, "platform", "get").mockReturnValue("win32");
     const proc = {
@@ -131,13 +133,19 @@ describe("stopSessionProcess", () => {
       exitCode: 0,
       kill: vi.fn(),
     } as unknown as ChildProcess;
-    // Never resolves on its own: only the bounded grace timer should settle it.
-    const procClosed = new Promise<void>(() => {});
+    let releaseClose = () => {};
+    const procClosed = new Promise<void>((resolve) => {
+      releaseClose = resolve;
+    });
+    // Mirrors runSubprocess: procForceClose force-settles the turn and resolves
+    // procClosed when the OS never delivers the child `close`.
+    const procForceClose = vi.fn(() => releaseClose());
     const session = {
       workspace: "/tmp/ws",
       agentSessionId: null,
       proc,
       procClosed,
+      procForceClose,
       turnNumber: 0,
     };
     let settled = false;
@@ -147,8 +155,10 @@ describe("stopSessionProcess", () => {
     await Promise.resolve();
     expect(settled).toBe(false);
     expect(session.proc).toBe(proc);
+    expect(procForceClose).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1000);
     await stopping;
+    expect(procForceClose).toHaveBeenCalledTimes(1);
     expect(session.proc).toBeNull();
     expect(session.procClosed).toBeNull();
     vi.useRealTimers();

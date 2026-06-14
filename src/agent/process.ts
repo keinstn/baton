@@ -121,9 +121,17 @@ export async function stopSessionProcess(session: AgentSession): Promise<void> {
       await procClosed;
       return;
     }
-    // Windows may briefly delay the child `close` after a forced tree kill;
-    // bound the wait so shutdown never hangs the worker.
-    await Promise.race([procClosed, delay(TIMEOUT_KILL_GRACE_MS)]);
+    // Windows can delay or miss the child `close` after a forced tree kill.
+    // Bound the wait, then force-settle the in-flight turn so neither the worker
+    // nor this shutdown hangs; procClosed resolves as part of that force-close.
+    const closed = await Promise.race([
+      procClosed.then(() => true),
+      delay(TIMEOUT_KILL_GRACE_MS).then(() => false),
+    ]);
+    if (!closed) {
+      session.procForceClose?.();
+      await procClosed;
+    }
   };
   if (!proc) return;
   if (proc.exitCode !== null) {
@@ -137,6 +145,7 @@ export async function stopSessionProcess(session: AgentSession): Promise<void> {
   }
   if (session.proc === proc) session.proc = null;
   if (session.procClosed === procClosed) session.procClosed = null;
+  session.procForceClose = null;
 }
 
 export interface RunSubprocessOptions {
@@ -189,6 +198,7 @@ export function runSubprocess(
     session.procClosed = new Promise<void>((resolve) => {
       resolveProcClosed = resolve;
     });
+    session.procForceClose = null;
 
     opts.logger?.debug("subprocess spawned", {
       pid: proc.pid,
@@ -220,6 +230,7 @@ export function runSubprocess(
     let timeoutGraceTimer: NodeJS.Timeout | null = null;
     const clearProcessRef = () => {
       if (session.proc === proc) session.proc = null;
+      session.procForceClose = null;
       if (session.procClosed) {
         resolveProcClosed();
         session.procClosed = null;
@@ -229,6 +240,16 @@ export function runSubprocess(
       clearTimeout(timer);
       if (timeoutGraceTimer) clearTimeout(timeoutGraceTimer);
       rl.close();
+    };
+    const forceCloseProcess = (turnResult?: TurnResult) => {
+      proc.stdout.destroy();
+      proc.stderr.destroy();
+      proc.unref();
+      clearResources();
+      clearProcessRef();
+      if (resolved || !turnResult) return;
+      resolved = true;
+      resolvePromise(turnResult);
     };
     const resolveOnce = (
       value: TurnResult,
@@ -250,6 +271,8 @@ export function runSubprocess(
       }
       resolvePromise(value);
     };
+    session.procForceClose = () =>
+      forceCloseProcess({ ok: false, error: "turn_cancelled" });
     const timer = setTimeout(() => {
       timedOut = true;
       if (process.platform === "win32" && proc.pid !== undefined) {

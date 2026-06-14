@@ -36,6 +36,7 @@ function makeSession(): AgentSession {
     agentSessionId: null,
     proc: null,
     procClosed: null,
+    procForceClose: null,
     turnNumber: 0,
   };
 }

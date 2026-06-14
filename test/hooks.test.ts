@@ -58,4 +58,32 @@ describe("runHookScript", () => {
     // taskkill succeeded, so the single-process SIGKILL fallback is not used.
     expect(proc.kill).not.toHaveBeenCalled();
   });
+
+  it("force-settles a Windows timeout when close never arrives", async () => {
+    vi.useFakeTimers();
+    const proc = new FakeChildProcess(321);
+    const taskkill = new EventEmitter();
+    spawnMock.mockReturnValueOnce(proc).mockImplementationOnce(() => {
+      // taskkill confirms, but the wrapper `close` event never fires.
+      setTimeout(() => taskkill.emit("close", 0), 0);
+      return taskkill;
+    });
+
+    const { runHookScript } = await import("../src/workspace/hooks.js");
+    const pending = runHookScript("sleep 30", {
+      cwd: "/tmp",
+      timeoutMs: 10,
+      platform: "win32",
+    });
+
+    // timeoutMs (10) → tree kill → grace (1000) → forced timeout result.
+    await vi.advanceTimersByTimeAsync(1100);
+    await expect(pending).resolves.toMatchObject({
+      ok: false,
+      timedOut: true,
+      code: null,
+    });
+    expect(proc.unref).toHaveBeenCalled();
+    vi.useRealTimers();
+  });
 });

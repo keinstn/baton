@@ -10,6 +10,7 @@ export interface HookResult {
 }
 
 const MAX_OUTPUT_BYTES = 8 * 1024;
+const TIMEOUT_KILL_GRACE_MS = 1000;
 
 /**
  * Run a workspace hook script (SPEC §9.4): `bash -lc <script>` with the
@@ -33,6 +34,8 @@ export function runHookScript(
 
     let output = "";
     let timedOut = false;
+    let resolved = false;
+    let graceTimer: NodeJS.Timeout | null = null;
     const append = (chunk: Buffer) => {
       if (output.length < MAX_OUTPUT_BYTES) {
         output += chunk
@@ -43,37 +46,41 @@ export function runHookScript(
     proc.stdout.on("data", append);
     proc.stderr.on("data", append);
 
+    const resolveOnce = (result: HookResult) => {
+      clearTimeout(timer);
+      if (graceTimer) clearTimeout(graceTimer);
+      if (resolved) return;
+      resolved = true;
+      resolvePromise({ ...result, output: result.output.trim() });
+    };
+
     const timer = setTimeout(() => {
       timedOut = true;
       const platform = opts.platform ?? process.platform;
       // Hooks are not spawned detached, so the POSIX process-group kill used for
       // agents is unsafe here; kill the single bash process on Unix, and the
-      // whole tree by PID on Windows so hook children are not orphaned. Either
-      // way the `close` handler below settles the promise once the process exits.
+      // whole tree by PID on Windows so hook children are not orphaned.
       if (platform === "win32" && proc.pid !== undefined) {
         killWindowsTree(proc.pid, () => proc.kill("SIGKILL"));
+        // Windows can delay or miss the child `close` after a forced tree kill,
+        // so force-settle the timeout after a short grace period — otherwise the
+        // hook (and its caller) would hang.
+        graceTimer = setTimeout(() => {
+          proc.stdout.destroy();
+          proc.stderr.destroy();
+          proc.unref();
+          resolveOnce({ ok: false, code: null, timedOut: true, output });
+        }, TIMEOUT_KILL_GRACE_MS);
       } else {
         proc.kill("SIGKILL");
       }
     }, opts.timeoutMs);
 
     proc.on("error", () => {
-      clearTimeout(timer);
-      resolvePromise({
-        ok: false,
-        code: null,
-        timedOut,
-        output: output.trim(),
-      });
+      resolveOnce({ ok: false, code: null, timedOut, output });
     });
     proc.on("close", (code) => {
-      clearTimeout(timer);
-      resolvePromise({
-        ok: !timedOut && code === 0,
-        code,
-        timedOut,
-        output: output.trim(),
-      });
+      resolveOnce({ ok: !timedOut && code === 0, code, timedOut, output });
     });
   });
 }

@@ -96,6 +96,7 @@ export class CopilotRunner implements AgentRunner {
       agentSessionId: null,
       proc: null,
       procClosed: null,
+      procForceClose: null,
       turnNumber: 0,
     };
   }
