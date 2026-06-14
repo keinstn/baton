@@ -65,6 +65,7 @@ describe("stopSessionProcess Windows shutdown", () => {
       proc: null,
       procClosed: null,
       procForceClose: null,
+      procTreeKillConfirmed: false,
       turnNumber: 0,
     };
 
@@ -102,7 +103,7 @@ describe("stopSessionProcess Windows shutdown", () => {
     spawnMock
       .mockReturnValueOnce(proc)
       .mockImplementationOnce(() => {
-        setTimeout(() => taskkillForTimeout.emit("close", 0), 0);
+        setTimeout(() => taskkillForTimeout.emit("close", 1), 0);
         return taskkillForTimeout as never;
       })
       .mockImplementationOnce(() => {
@@ -120,6 +121,7 @@ describe("stopSessionProcess Windows shutdown", () => {
       proc: null,
       procClosed: null,
       procForceClose: null,
+      procTreeKillConfirmed: false,
       turnNumber: 0,
     };
 
@@ -134,16 +136,17 @@ describe("stopSessionProcess Windows shutdown", () => {
     await expect(turn).resolves.toEqual({ ok: false, error: "turn_timeout" });
 
     const stopping = stopSessionProcess(session);
-    await vi.advanceTimersByTimeAsync(1000);
-    await expect(stopping).rejects.toMatchObject({
+    const stopExpectation = expect(stopping).rejects.toMatchObject({
       code: "process_tree_kill_failed",
     });
+    await vi.advanceTimersByTimeAsync(1000);
+    await stopExpectation;
     expect(session.proc).toBeNull();
     expect(session.procClosed).toBeNull();
     expect(session.procForceClose).toBeNull();
   });
 
-  it("accepts an already-exited process when the follow-up taskkill loses the race", async () => {
+  it("accepts an already-exited process when an earlier tree kill was confirmed", async () => {
     vi.useFakeTimers();
     vi.spyOn(process, "platform", "get").mockReturnValue("win32");
 
@@ -176,6 +179,7 @@ describe("stopSessionProcess Windows shutdown", () => {
       proc: null,
       procClosed: null,
       procForceClose: null,
+      procTreeKillConfirmed: false,
       turnNumber: 0,
     };
 
@@ -196,5 +200,60 @@ describe("stopSessionProcess Windows shutdown", () => {
     expect(session.proc).toBeNull();
     expect(session.procClosed).toBeNull();
     expect(session.procForceClose).toBeNull();
+  });
+
+  it("still fails if only the wrapper exits and no tree kill was ever confirmed", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+
+    const proc = new FakeChildProcess(123);
+    proc.kill.mockReturnValueOnce(true).mockReturnValueOnce(false);
+    const taskkillForTimeout = new EventEmitter();
+    const taskkillForStop = new EventEmitter();
+    spawnMock
+      .mockReturnValueOnce(proc)
+      .mockImplementationOnce(() => {
+        setTimeout(() => taskkillForTimeout.emit("close", 1), 0);
+        return taskkillForTimeout as never;
+      })
+      .mockImplementationOnce(() => {
+        setTimeout(() => taskkillForStop.emit("close", 1), 0);
+        setTimeout(() => {
+          proc.exitCode = 0;
+          proc.emit("close", 0);
+        }, 10);
+        return taskkillForStop as never;
+      });
+
+    const { stopSessionProcess, runSubprocess } = await import(
+      "../src/agent/process.js"
+    );
+
+    const session: AgentSession = {
+      workspace: "/tmp/ws",
+      agentSessionId: null,
+      proc: null,
+      procClosed: null,
+      procForceClose: null,
+      procTreeKillConfirmed: false,
+      turnNumber: 0,
+    };
+
+    const turn = runSubprocess(session, {
+      command: "sleep 30",
+      timeoutMs: 10,
+      onEvent: () => {},
+      onLine: () => null,
+    });
+
+    await vi.advanceTimersByTimeAsync(1010);
+    await expect(turn).resolves.toEqual({ ok: false, error: "turn_timeout" });
+
+    const stopping = stopSessionProcess(session);
+    const stopExpectation = expect(stopping).rejects.toMatchObject({
+      code: "process_tree_kill_failed",
+    });
+    await vi.advanceTimersByTimeAsync(20);
+    await stopExpectation;
   });
 });

@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   sanitizeWorkspaceKey,
   WorkspaceManager,
@@ -135,6 +135,41 @@ describe("workspace creation and hooks (SPEC §9.2, §9.4)", () => {
     await expect(m.createForIssue(makeIssue())).rejects.toMatchObject({
       code: "hook_failed",
     });
+  });
+
+  it("marks failed after_create workspaces invalid when cleanup fails", async () => {
+    const root = await tempRoot();
+    const issue = makeIssue();
+    const workspacePath = join(root, issue.identifier);
+    const m = manager(root, {
+      after_create: "echo broken > stale.txt; exit 1",
+    });
+    vi.spyOn(m as never, "removeWorkspaceDir").mockRejectedValueOnce(
+      new Error("cleanup failed"),
+    );
+
+    await expect(m.createForIssue(issue)).rejects.toMatchObject({
+      code: "hook_failed",
+      message: expect.stringContaining("workspace cleanup failed"),
+    });
+    expect(
+      await exists(join(workspacePath, ".baton-after-create-failed")),
+    ).toBe(true);
+    expect(await exists(join(workspacePath, "stale.txt"))).toBe(true);
+
+    m.applyConfig(
+      makeConfig({
+        workspace: { root },
+        hooks: { after_create: "echo repaired > created.txt" },
+      }),
+    );
+
+    const recreated = await m.createForIssue(issue);
+    expect(recreated.createdNow).toBe(true);
+    expect(await exists(join(workspacePath, "stale.txt"))).toBe(false);
+    expect(await readFile(join(workspacePath, "created.txt"), "utf8")).toBe(
+      "repaired\n",
+    );
   });
 
   it("before_run failure aborts the attempt", async () => {

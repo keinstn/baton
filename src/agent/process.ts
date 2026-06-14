@@ -136,15 +136,16 @@ export async function stopSessionProcess(session: AgentSession): Promise<void> {
     session.proc = null;
     session.procClosed = null;
     session.procForceClose = null;
+    session.procTreeKillConfirmed = false;
     return;
   }
   if (process.platform === "win32" && proc.pid !== undefined) {
-    let fallbackKillSent = false;
-    const confirmedKilled = await killWindowsTreeAndWait(proc.pid, () => {
-      fallbackKillSent = proc.kill("SIGKILL");
-    });
+    const confirmedKilled = await killWindowsTreeAndWait(proc.pid, () =>
+      proc.kill("SIGKILL"),
+    );
+    if (confirmedKilled) session.procTreeKillConfirmed = true;
     await waitForProcClosed();
-    if (!confirmedKilled && fallbackKillSent) {
+    if (!confirmedKilled && !session.procTreeKillConfirmed) {
       throw new BatonError(
         "process_tree_kill_failed",
         `taskkill failed for pid ${proc.pid}`,
@@ -157,6 +158,7 @@ export async function stopSessionProcess(session: AgentSession): Promise<void> {
   if (session.proc === proc) session.proc = null;
   if (session.procClosed === procClosed) session.procClosed = null;
   session.procForceClose = null;
+  session.procTreeKillConfirmed = false;
 }
 
 export interface RunSubprocessOptions {
@@ -210,6 +212,7 @@ export function runSubprocess(
       resolveProcClosed = resolve;
     });
     session.procForceClose = null;
+    session.procTreeKillConfirmed = false;
 
     opts.logger?.debug("subprocess spawned", {
       pid: proc.pid,
@@ -286,7 +289,17 @@ export function runSubprocess(
       forceCloseProcess({ ok: false, error: "turn_cancelled" });
     const timer = setTimeout(() => {
       timedOut = true;
-      killProcessTree(proc);
+      if (process.platform === "win32" && proc.pid !== undefined) {
+        void killWindowsTreeAndWait(proc.pid, () => proc.kill("SIGKILL")).then(
+          (confirmed) => {
+            if (confirmed && session.proc === proc) {
+              session.procTreeKillConfirmed = true;
+            }
+          },
+        );
+      } else {
+        killProcessTree(proc);
+      }
       // Windows can occasionally delay or miss the child `close` event after a
       // forced tree kill. Resolve after a short grace period so timeout
       // enforcement itself never hangs the worker or CI. Keep session.proc so

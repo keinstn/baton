@@ -33,6 +33,10 @@ export interface AgentSession {
   /** Best-effort force-settle for an in-flight turn when the OS confirms the
    *  process tree was killed but Node never delivers a child `close` event. */
   procForceClose: (() => void) | null;
+  /** Whether Baton has already received a successful Windows tree-kill
+   *  confirmation for the current subprocess. This lets later shutdown paths
+   *  distinguish "wrapper PID is gone" from "the full agent tree was killed". */
+  procTreeKillConfirmed: boolean;
   /** Count of turns already run on this session; the adapter increments it
    *  before each turn so continuation turns resume and skip session_started
    *  (SPEC §10.1). */

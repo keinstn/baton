@@ -116,6 +116,13 @@ export class WorkspaceManager {
     return path.join(workspacePath, INVALID_AFTER_CREATE_MARKER);
   }
 
+  private async markInvalidAfterCreate(workspacePath: string): Promise<void> {
+    await writeFile(
+      this.invalidAfterCreateMarkerPath(workspacePath),
+      "after_create failed; workspace must not be reused\n",
+    );
+  }
+
   private async hasInvalidAfterCreateMarker(
     workspacePath: string,
   ): Promise<boolean> {
@@ -144,11 +151,8 @@ export class WorkspaceManager {
     });
     if (result.ok) return;
 
+    await this.markInvalidAfterCreate(workspacePath);
     if (!result.treeKillConfirmed) {
-      await writeFile(
-        this.invalidAfterCreateMarkerPath(workspacePath),
-        "after_create failed without confirmed Windows tree termination\n",
-      );
       throw new BatonError(
         "hook_failed",
         `after_create hook failed and taskkill did not confirm subtree termination (timedOut=${result.timedOut} code=${result.code}): ${result.output.slice(0, 500)}`,
@@ -156,7 +160,15 @@ export class WorkspaceManager {
     }
     // SPEC §9.4: after_create failure is fatal to workspace creation;
     // remove the partially prepared directory (SPEC §9.3).
-    await this.removeWorkspaceDir(workspacePath);
+    try {
+      await this.removeWorkspaceDir(workspacePath);
+    } catch (err) {
+      throw new BatonError(
+        "hook_failed",
+        `after_create hook failed and workspace cleanup failed: ${String(err)}`,
+        { cause: err },
+      );
+    }
     throw new BatonError(
       "hook_failed",
       `after_create hook failed (timedOut=${result.timedOut} code=${result.code}): ${result.output.slice(0, 500)}`,

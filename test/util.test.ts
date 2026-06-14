@@ -89,6 +89,7 @@ describe("stopSessionProcess", () => {
       proc,
       procClosed,
       procForceClose: null,
+      procTreeKillConfirmed: false,
       turnNumber: 0,
     };
     let settled = false;
@@ -117,6 +118,7 @@ describe("stopSessionProcess", () => {
       proc,
       procClosed: Promise.resolve(),
       procForceClose: null,
+      procTreeKillConfirmed: false,
       turnNumber: 0,
     };
     await stopSessionProcess(session);
@@ -144,6 +146,7 @@ describe("stopSessionProcess", () => {
       proc,
       procClosed,
       procForceClose,
+      procTreeKillConfirmed: false,
       turnNumber: 0,
     };
     let settled = false;

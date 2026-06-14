@@ -33,6 +33,7 @@ class FakeRunner implements AgentRunner {
       proc: null,
       procClosed: null,
       procForceClose: null,
+      procTreeKillConfirmed: false,
       turnNumber: 0,
     };
   }
