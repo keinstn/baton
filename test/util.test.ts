@@ -126,6 +126,8 @@ describe("stopSessionProcess", () => {
   });
 
   it("waits for procClosed even after exitCode is already set", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(process, "platform", "get").mockReturnValue("win32");
     const proc = {
       pid: undefined,
       exitCode: 0,
@@ -135,12 +137,13 @@ describe("stopSessionProcess", () => {
     const procClosed = new Promise<void>((resolve) => {
       releaseClose = resolve;
     });
+    const procForceClose = vi.fn(() => releaseClose());
     const session = {
       workspace: "/tmp/ws",
       agentSessionId: null,
       proc,
       procClosed,
-      procForceClose: null,
+      procForceClose,
       turnNumber: 0,
     };
     let settled = false;
@@ -150,8 +153,10 @@ describe("stopSessionProcess", () => {
     await Promise.resolve();
     expect(settled).toBe(false);
     expect(session.proc).toBe(proc);
-    releaseClose();
+    expect(procForceClose).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1000);
     await stopping;
+    expect(procForceClose).toHaveBeenCalledTimes(1);
     expect(session.proc).toBeNull();
     expect(session.procClosed).toBeNull();
   });

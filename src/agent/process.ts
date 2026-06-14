@@ -115,32 +115,32 @@ export async function ensureWorkspaceDir(workspace: string): Promise<void> {
 export async function stopSessionProcess(session: AgentSession): Promise<void> {
   const proc = session.proc;
   const procClosed = session.procClosed;
+  const waitForProcClosed = async (): Promise<void> => {
+    if (!procClosed) return;
+    if (process.platform !== "win32") {
+      await procClosed;
+      return;
+    }
+    const closed = await Promise.race([
+      procClosed.then(() => true),
+      delay(TIMEOUT_KILL_GRACE_MS).then(() => false),
+    ]);
+    if (!closed) {
+      session.procForceClose?.();
+      await procClosed;
+    }
+  };
   if (!proc) return;
   if (proc.exitCode !== null) {
-    if (procClosed) await procClosed;
+    await waitForProcClosed();
     session.proc = null;
     session.procClosed = null;
     session.procForceClose = null;
     return;
   }
   if (process.platform === "win32" && proc.pid !== undefined) {
-    const confirmedKilled = await killWindowsTreeAndWait(proc.pid, () =>
-      proc.kill("SIGKILL"),
-    );
-    if (procClosed) {
-      if (confirmedKilled) {
-        const closed = await Promise.race([
-          procClosed.then(() => true),
-          delay(TIMEOUT_KILL_GRACE_MS).then(() => false),
-        ]);
-        if (!closed) {
-          session.procForceClose?.();
-          await procClosed;
-        }
-      } else {
-        await procClosed;
-      }
-    }
+    await killWindowsTreeAndWait(proc.pid, () => proc.kill("SIGKILL"));
+    await waitForProcClosed();
   } else {
     killProcessTree(proc);
     if (procClosed) await procClosed;
