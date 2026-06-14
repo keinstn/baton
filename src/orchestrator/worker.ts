@@ -56,10 +56,17 @@ export function createWorker(deps: WorkerDeps): RunWorker {
     await deps.workspaces.runBeforeRun(issue, workspace.path);
 
     const session = await deps.runner.startSession(workspace.path);
+    let stopPromise: Promise<void> | null = null;
+    const stopSessionOnce = (): Promise<void> => {
+      stopPromise ??= deps.runner.stopSession(session);
+      return stopPromise;
+    };
     // When the orchestrator cancels (stall/reconciliation) it stops the session;
     // the in-flight turn then ends and the loop breaks (SPEC §8.5).
     const onAbort = () => {
-      void deps.runner.stopSession(session);
+      void stopSessionOnce().catch(() => {
+        // The finally block awaits the same promise and owns error propagation.
+      });
     };
     signal?.addEventListener("abort", onAbort, { once: true });
 
@@ -122,7 +129,7 @@ export function createWorker(deps: WorkerDeps): RunWorker {
     } finally {
       signal?.removeEventListener("abort", onAbort);
       try {
-        await deps.runner.stopSession(session);
+        await stopSessionOnce();
       } finally {
         await deps.workspaces.runAfterRun(issue, workspace.path);
       }

@@ -20,7 +20,10 @@ class FakeRunner implements AgentRunner {
   resumeFlags: boolean[] = [];
   private turnIndex = 0;
 
-  constructor(private readonly results: TurnResult[] = [{ ok: true }]) {}
+  constructor(
+    private readonly results: TurnResult[] = [{ ok: true }],
+    private readonly stopError?: Error,
+  ) {}
 
   async startSession(workspace: string): Promise<AgentSession> {
     this.calls.push("start");
@@ -59,6 +62,7 @@ class FakeRunner implements AgentRunner {
 
   async stopSession(): Promise<void> {
     this.calls.push("stop");
+    if (this.stopError) throw this.stopError;
   }
 }
 
@@ -264,5 +268,35 @@ describe("worker attempt (SPEC §16)", () => {
     // Abort breaks the loop after the in-flight turn; the session is stopped.
     expect(runner.calls.filter((c) => c === "turn").length).toBe(1);
     expect(runner.calls[runner.calls.length - 1]).toBe("stop");
+  });
+
+  it("propagates stopSession failures from abort without unhandled rejection", async () => {
+    const root = await mkdtemp(join(tmpdir(), "baton-worker-"));
+    const config = makeConfig({
+      workspace: { root },
+      agent: { max_turns: 5 },
+    });
+    const workspaces = new WorkspaceManager(config, silentLogger);
+    const runner = new FakeRunner([{ ok: true }], new Error("stop failed"));
+    const runWorker = createWorker({
+      workspaces,
+      runner,
+      tracker: fakeTracker(["Todo", "Todo", "Todo"]),
+      config: () => config,
+      promptTemplate: () => "Work on {{ issue.identifier }}: {{ issue.title }}",
+      logger: silentLogger,
+    });
+    const controller = new AbortController();
+    await expect(
+      runWorker(
+        makeIssue(),
+        null,
+        (e) => {
+          if (e.event === "session_started") controller.abort();
+        },
+        controller.signal,
+      ),
+    ).rejects.toThrow("stop failed");
+    expect(runner.calls.filter((c) => c === "stop")).toHaveLength(1);
   });
 });
