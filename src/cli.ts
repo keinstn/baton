@@ -2,6 +2,7 @@
 import { watch } from "node:fs";
 import path from "node:path";
 import { createRunner } from "./agent/factory.js";
+import { makeTreeKiller } from "./agent/tree-killer.js";
 import { parseArgs } from "./cli-args.js";
 import { buildConfig, validateDispatchConfig } from "./config/schema.js";
 import { errorCause, isBatonError } from "./errors.js";
@@ -44,8 +45,15 @@ async function main(): Promise<void> {
   }
 
   const tracker = new GitHubProjectsClient(config.tracker, fetch, logger);
-  const workspaces = new WorkspaceManager(config, logger);
-  const { runner, applyReloadedConfig } = createRunner(config, logger);
+  // One process-tree killer for the platform, injected into every component
+  // that terminates a subprocess (SPEC §10.3).
+  const treeKiller = makeTreeKiller();
+  const workspaces = new WorkspaceManager(config, logger, treeKiller);
+  const { runner, applyReloadedConfig } = createRunner(
+    config,
+    logger,
+    treeKiller,
+  );
 
   // SPEC §6.2: hot-reload WORKFLOW.md, keeping the last known good config on
   // failure. The orchestrator/worker read config + prompt through these getters,

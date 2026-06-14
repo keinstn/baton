@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentSession } from "../src/agent/runner.js";
+import { makeTreeKiller } from "../src/agent/tree-killer.js";
 
 const { spawnMock } = vi.hoisted(() => ({
   spawnMock: vi.fn(),
@@ -41,6 +42,9 @@ function makeSession(): AgentSession {
   };
 }
 
+// Inject the Windows killer rather than spying on process.platform.
+const windows = makeTreeKiller("win32");
+
 describe("stopSessionProcess Windows shutdown", () => {
   afterEach(() => {
     spawnMock.mockReset();
@@ -49,8 +53,6 @@ describe("stopSessionProcess Windows shutdown", () => {
   });
 
   it("kills the running tree with taskkill and clears the session once it closes", async () => {
-    vi.spyOn(process, "platform", "get").mockReturnValue("win32");
-
     const proc = new FakeChildProcess(123);
     const taskkill = new EventEmitter();
     spawnMock.mockReturnValueOnce(proc).mockImplementationOnce(() => {
@@ -70,11 +72,12 @@ describe("stopSessionProcess Windows shutdown", () => {
     void runSubprocess(session, {
       command: "sleep 30",
       timeoutMs: 60_000,
+      treeKiller: windows,
       onEvent: () => {},
       onLine: () => null,
     });
 
-    await stopSessionProcess(session);
+    await stopSessionProcess(session, windows);
 
     expect(spawnMock).toHaveBeenCalledWith(
       "taskkill",
@@ -87,8 +90,6 @@ describe("stopSessionProcess Windows shutdown", () => {
 
   it("force-settles a timed-out turn on Windows when close never arrives", async () => {
     vi.useFakeTimers();
-    vi.spyOn(process, "platform", "get").mockReturnValue("win32");
-
     const proc = new FakeChildProcess(123);
     const taskkill = new EventEmitter();
     spawnMock.mockReturnValueOnce(proc).mockImplementationOnce(() => {
@@ -104,6 +105,7 @@ describe("stopSessionProcess Windows shutdown", () => {
     const turn = runSubprocess(session, {
       command: "sleep 30",
       timeoutMs: 100,
+      treeKiller: windows,
       onEvent: () => {},
       onLine: () => null,
     });
@@ -117,8 +119,6 @@ describe("stopSessionProcess Windows shutdown", () => {
 
   it("bounds the wait when taskkill runs but the child close never arrives", async () => {
     vi.useFakeTimers();
-    vi.spyOn(process, "platform", "get").mockReturnValue("win32");
-
     const proc = new FakeChildProcess(123);
     const taskkill = new EventEmitter();
     spawnMock.mockReturnValueOnce(proc).mockImplementationOnce(() => {
@@ -135,11 +135,12 @@ describe("stopSessionProcess Windows shutdown", () => {
     void runSubprocess(session, {
       command: "sleep 30",
       timeoutMs: 60_000,
+      treeKiller: windows,
       onEvent: () => {},
       onLine: () => null,
     });
 
-    const stopping = stopSessionProcess(session);
+    const stopping = stopSessionProcess(session, windows);
     await vi.advanceTimersByTimeAsync(1000);
     await expect(stopping).resolves.toBeUndefined();
     expect(session.proc).toBeNull();

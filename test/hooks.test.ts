@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { makeTreeKiller } from "../src/agent/tree-killer.js";
 
 const { spawnMock } = vi.hoisted(() => ({
   spawnMock: vi.fn(),
@@ -9,6 +10,9 @@ const { spawnMock } = vi.hoisted(() => ({
 vi.mock("node:child_process", () => ({
   spawn: spawnMock,
 }));
+
+// Inject the Windows killer rather than spying on process.platform.
+const windows = makeTreeKiller("win32");
 
 class FakeChildProcess extends EventEmitter {
   stdout = new PassThrough();
@@ -46,7 +50,7 @@ describe("runHookScript", () => {
     const result = await runHookScript("sleep 30", {
       cwd: "/tmp",
       timeoutMs: 10,
-      platform: "win32",
+      treeKiller: windows,
     });
 
     expect(result).toMatchObject({ ok: false, timedOut: true, code: null });
@@ -73,7 +77,7 @@ describe("runHookScript", () => {
     const pending = runHookScript("sleep 30", {
       cwd: "/tmp",
       timeoutMs: 10,
-      platform: "win32",
+      treeKiller: windows,
     });
 
     // timeoutMs (10) → tree kill → grace (1000) → forced timeout result.

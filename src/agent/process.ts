@@ -1,4 +1,4 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { stat } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { setTimeout as delay } from "node:timers/promises";
@@ -7,6 +7,7 @@ import { BatonError } from "../errors.js";
 import type { Logger } from "../observability/logger.js";
 import { now, toBashPath } from "../util.js";
 import type { AgentEventCallback, AgentSession, TurnResult } from "./runner.js";
+import { makeTreeKiller, type TreeKiller } from "./tree-killer.js";
 
 /** Quote a string for safe interpolation into a bash -lc command line. */
 export function shellQuote(s: string): string {
@@ -35,57 +36,6 @@ export function normalizeCommandForBash(
   return shellQuote(toBashPath(candidate, platform));
 }
 
-/**
- * Kill a process tree on Windows by PID. `process.kill(-pid)` is a no-op there,
- * so `taskkill /T` is the only way to reach the bash wrapper's children (the
- * real `claude.exe` / `copilot.exe`). Best-effort: on a spawn error or non-zero
- * taskkill exit `onError` runs (e.g. a single-process SIGKILL fallback). The
- * returned promise settles once taskkill exits, so callers that must not race
- * the kill can `await` it; fire-and-forget callers `void` it.
- */
-export function killWindowsTree(
-  pid: number,
-  onError: () => void,
-): Promise<void> {
-  return new Promise((resolve) => {
-    const tk = spawn("taskkill", ["/F", "/T", "/PID", String(pid)], {
-      stdio: "ignore",
-    });
-    tk.on("error", () => {
-      onError();
-      resolve();
-    });
-    tk.on("close", (code) => {
-      if (code !== 0) onError();
-      resolve();
-    });
-  });
-}
-
-/**
- * Kill the agent's whole process tree. On Unix, signal the process group
- * (requires spawn with detached: true); on Windows, `taskkill /T` by PID, since
- * negative-pid signals are POSIX-only and would orphan the agent child.
- */
-export function killProcessTree(proc: ChildProcess): void {
-  const pid = proc.pid;
-  if (pid === undefined) {
-    proc.kill("SIGKILL");
-    return;
-  }
-  if (process.platform === "win32") {
-    void killWindowsTree(pid, () => proc.kill("SIGKILL"));
-    return;
-  }
-  try {
-    process.kill(-pid, "SIGKILL");
-    return;
-  } catch {
-    // Fall through to single-process kill.
-  }
-  proc.kill("SIGKILL");
-}
-
 /** SPEC §9.5 Invariant 1: validate the workspace cwd before launching an agent. */
 export async function ensureWorkspaceDir(workspace: string): Promise<void> {
   let isDir = false;
@@ -103,36 +53,28 @@ export async function ensureWorkspaceDir(workspace: string): Promise<void> {
 }
 
 /** Terminate a session's process tree and wait until it has closed. */
-export async function stopSessionProcess(session: AgentSession): Promise<void> {
+export async function stopSessionProcess(
+  session: AgentSession,
+  treeKiller: TreeKiller = makeTreeKiller(),
+): Promise<void> {
   const proc = session.proc;
   const procClosed = session.procClosed;
-  const waitForProcClosed = async (): Promise<void> => {
-    if (!procClosed) return;
-    if (process.platform !== "win32") {
-      await procClosed;
-      return;
-    }
+  if (!proc) return;
+  if (proc.exitCode === null) await treeKiller.kill(proc);
+  if (procClosed) {
     // Windows can delay or miss the child `close` after a forced tree kill.
     // Bound the wait, then force-settle the in-flight turn so neither the worker
     // nor this shutdown hangs; procClosed resolves as part of that force-close.
+    // On Unix `close` is immediate, so the bounded race resolves at once and the
+    // force-close path is never taken.
     const closed = await Promise.race([
       procClosed.then(() => true),
-      delay(TIMEOUT_KILL_GRACE_MS).then(() => false),
+      delay(treeKiller.closeGraceMs).then(() => false),
     ]);
     if (!closed) {
       session.procForceClose?.();
       await procClosed;
     }
-  };
-  if (!proc) return;
-  if (proc.exitCode !== null) {
-    await waitForProcClosed();
-  } else if (process.platform === "win32" && proc.pid !== undefined) {
-    await killWindowsTree(proc.pid, () => proc.kill("SIGKILL"));
-    await waitForProcClosed();
-  } else {
-    killProcessTree(proc);
-    if (procClosed) await procClosed;
   }
   if (session.proc === proc) session.proc = null;
   if (session.procClosed === procClosed) session.procClosed = null;
@@ -151,9 +93,9 @@ export interface RunSubprocessOptions {
   onLine: (line: string) => TurnResult | null;
   /** Optional logger for subprocess lifecycle events (debug level). */
   logger?: Logger;
+  /** Per-OS process-tree killer; defaults to the current platform's. */
+  treeKiller?: TreeKiller;
 }
-
-const TIMEOUT_KILL_GRACE_MS = 1000;
 
 /**
  * Run one agent process: spawn `bash -lc <command>` in its own process group,
@@ -169,6 +111,7 @@ export function runSubprocess(
   opts: RunSubprocessOptions,
 ): Promise<TurnResult> {
   return new Promise((resolvePromise) => {
+    const treeKiller = opts.treeKiller ?? makeTreeKiller();
     const useStdin = opts.stdin !== undefined;
     // detached: own process group, so timeout/stop kills the whole agent
     // process tree (not just the bash -lc wrapper). The stdio tuples are kept
@@ -266,24 +209,19 @@ export function runSubprocess(
       forceCloseProcess({ ok: false, error: "turn_cancelled" });
     const timer = setTimeout(() => {
       timedOut = true;
-      if (process.platform === "win32" && proc.pid !== undefined) {
-        void killWindowsTree(proc.pid, () => proc.kill("SIGKILL"));
-        // Windows can delay or miss the child `close` after a forced tree kill,
-        // so force-settle the turn after a short grace period — otherwise
-        // timeout enforcement would hang the worker (and CI). Keep session.proc
-        // intact (clearProcessRef: false) so stopSession() can still await the
-        // real close when it eventually arrives; the close handler short-circuits
-        // on `resolved`.
-        timeoutGraceTimer = setTimeout(() => {
-          resolveOnce(
-            { ok: false, error: "turn_timeout" },
-            { emitTimeoutEvent: true, clearProcessRef: false },
-          );
-        }, TIMEOUT_KILL_GRACE_MS);
-      } else {
-        // On Unix, `close` arrives promptly after the SIGKILL tree kill.
-        killProcessTree(proc);
-      }
+      void treeKiller.kill(proc);
+      // Windows can delay or miss the child `close` after a forced tree kill, so
+      // force-settle the turn after the grace period — otherwise timeout
+      // enforcement would hang the worker (and CI). Keep session.proc intact
+      // (clearProcessRef: false) so stopSession() can still await the real close
+      // when it eventually arrives; the close handler short-circuits on
+      // `resolved`. On Unix `close` arrives at once and clears this timer first.
+      timeoutGraceTimer = setTimeout(() => {
+        resolveOnce(
+          { ok: false, error: "turn_timeout" },
+          { emitTimeoutEvent: true, clearProcessRef: false },
+        );
+      }, treeKiller.closeGraceMs);
     }, opts.timeoutMs);
 
     const rl = createInterface({ input: proc.stdout });

@@ -19,6 +19,7 @@ import type {
   AgentSession,
   TurnResult,
 } from "./runner.js";
+import { makeTreeKiller, type TreeKiller } from "./tree-killer.js";
 
 // Re-exported for adapter authors and existing importers (e.g. copilot.ts, tests).
 export { shellQuote };
@@ -34,6 +35,7 @@ export class ClaudeCodeRunner implements AgentRunner {
   constructor(
     private cfg: ClaudeCodeConfig,
     private readonly logger?: Logger,
+    private readonly treeKiller: TreeKiller = makeTreeKiller(),
   ) {}
 
   /** Apply a new config; takes effect on the next turn dispatch (SPEC §6.2). */
@@ -107,6 +109,7 @@ export class ClaudeCodeRunner implements AgentRunner {
       onEvent,
       onLine: (line) => this.handleLine(session, line, onEvent),
       logger: this.logger,
+      treeKiller: this.treeKiller,
     });
   }
 
@@ -184,7 +187,7 @@ export class ClaudeCodeRunner implements AgentRunner {
   }
 
   async stopSession(session: AgentSession): Promise<void> {
-    await stopSessionProcess(session);
+    await stopSessionProcess(session, this.treeKiller);
   }
 }
 

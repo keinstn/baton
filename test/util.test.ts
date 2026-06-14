@@ -125,9 +125,8 @@ describe("stopSessionProcess", () => {
     expect(session.procClosed).toBeNull();
   });
 
-  it("force-settles via procForceClose on Windows when close never arrives", async () => {
+  it("force-settles via procForceClose when close never arrives", async () => {
     vi.useFakeTimers();
-    vi.spyOn(process, "platform", "get").mockReturnValue("win32");
     const proc = {
       pid: undefined,
       exitCode: 0,

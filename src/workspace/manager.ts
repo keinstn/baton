@@ -1,6 +1,7 @@
 import { mkdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { makeTreeKiller, type TreeKiller } from "../agent/tree-killer.js";
 import type { BatonConfig } from "../config/schema.js";
 import { BatonError } from "../errors.js";
 import type { Logger } from "../observability/logger.js";
@@ -39,6 +40,7 @@ export class WorkspaceManager {
   constructor(
     private config: BatonConfig,
     private readonly logger: Logger,
+    private readonly treeKiller: TreeKiller = makeTreeKiller(),
   ) {
     this.root = path.resolve(config.workspace.root);
   }
@@ -124,6 +126,7 @@ export class WorkspaceManager {
       cwd: workspacePath,
       env: this.hookEnv(issue, workspacePath),
       timeoutMs: this.config.hooks.timeoutMs,
+      treeKiller: this.treeKiller,
     });
     if (result.ok) return;
 
@@ -180,6 +183,7 @@ export class WorkspaceManager {
       cwd: workspacePath,
       env: this.hookEnv(issue, workspacePath),
       timeoutMs: this.config.hooks.timeoutMs,
+      treeKiller: this.treeKiller,
     });
     if (!result.ok) {
       throw new BatonError(
@@ -196,6 +200,7 @@ export class WorkspaceManager {
       cwd: workspacePath,
       env: this.hookEnv(issue, workspacePath),
       timeoutMs: this.config.hooks.timeoutMs,
+      treeKiller: this.treeKiller,
     });
     if (!result.ok) {
       this.logger.warn("after_run hook failed (ignored)", {
@@ -221,6 +226,7 @@ export class WorkspaceManager {
         cwd: workspacePath,
         env: this.hookEnv(issue, workspacePath),
         timeoutMs: this.config.hooks.timeoutMs,
+        treeKiller: this.treeKiller,
       });
       if (!result.ok) {
         this.logger.warn("before_remove hook failed (ignored)", {

@@ -17,6 +17,7 @@ import type {
   AgentSession,
   TurnResult,
 } from "./runner.js";
+import { makeTreeKiller, type TreeKiller } from "./tree-killer.js";
 
 /**
  * Default upper bound on prompt argv bytes. The GitHub Copilot CLI accepts
@@ -45,6 +46,7 @@ export class CopilotRunner implements AgentRunner {
   constructor(
     private cfg: CopilotConfig,
     private readonly logger?: Logger,
+    private readonly treeKiller: TreeKiller = makeTreeKiller(),
   ) {}
 
   /** Apply a new config; takes effect on the next turn dispatch (SPEC §6.2). */
@@ -162,6 +164,7 @@ export class CopilotRunner implements AgentRunner {
     return runSubprocess(session, {
       command: cmdline,
       timeoutMs: this.cfg.turnTimeoutMs,
+      treeKiller: this.treeKiller,
       onEvent,
       onLine: (line) => {
         const r = this.handleLine(
@@ -289,7 +292,7 @@ export class CopilotRunner implements AgentRunner {
   }
 
   async stopSession(session: AgentSession): Promise<void> {
-    await stopSessionProcess(session);
+    await stopSessionProcess(session, this.treeKiller);
   }
 }
 

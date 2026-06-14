@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { killWindowsTree } from "../agent/process.js";
+import { makeTreeKiller, type TreeKiller } from "../agent/tree-killer.js";
 
 export interface HookResult {
   ok: boolean;
@@ -10,11 +10,12 @@ export interface HookResult {
 }
 
 const MAX_OUTPUT_BYTES = 8 * 1024;
-const TIMEOUT_KILL_GRACE_MS = 1000;
 
 /**
  * Run a workspace hook script (SPEC §9.4): `bash -lc <script>` with the
  * workspace directory as cwd, a hard timeout, and truncated output capture.
+ * Spawned detached so a timeout kills the hook's whole process tree (e.g. a
+ * `git clone` child), not just the bash wrapper.
  */
 export function runHookScript(
   script: string,
@@ -22,14 +23,16 @@ export function runHookScript(
     cwd: string;
     env?: Record<string, string>;
     timeoutMs: number;
-    platform?: NodeJS.Platform;
+    treeKiller?: TreeKiller;
   },
 ): Promise<HookResult> {
   return new Promise((resolvePromise) => {
+    const treeKiller = opts.treeKiller ?? makeTreeKiller();
     const proc = spawn("bash", ["-lc", script], {
       cwd: opts.cwd,
       env: { ...process.env, ...opts.env },
       stdio: ["ignore", "pipe", "pipe"],
+      detached: true,
     });
 
     let output = "";
@@ -56,24 +59,17 @@ export function runHookScript(
 
     const timer = setTimeout(() => {
       timedOut = true;
-      const platform = opts.platform ?? process.platform;
-      // Hooks are not spawned detached, so the POSIX process-group kill used for
-      // agents is unsafe here; kill the single bash process on Unix, and the
-      // whole tree by PID on Windows so hook children are not orphaned.
-      if (platform === "win32" && proc.pid !== undefined) {
-        void killWindowsTree(proc.pid, () => proc.kill("SIGKILL"));
-        // Windows can delay or miss the child `close` after a forced tree kill,
-        // so force-settle the timeout after a short grace period — otherwise the
-        // hook (and its caller) would hang.
-        graceTimer = setTimeout(() => {
-          proc.stdout.destroy();
-          proc.stderr.destroy();
-          proc.unref();
-          resolveOnce({ ok: false, code: null, timedOut: true, output });
-        }, TIMEOUT_KILL_GRACE_MS);
-      } else {
-        proc.kill("SIGKILL");
-      }
+      void treeKiller.kill(proc);
+      // Windows can delay or miss the child `close` after a forced tree kill, so
+      // force-settle the timeout after the grace period — otherwise the hook
+      // (and its caller) would hang. On Unix `close` is immediate and clears
+      // this timer first.
+      graceTimer = setTimeout(() => {
+        proc.stdout.destroy();
+        proc.stderr.destroy();
+        proc.unref();
+        resolveOnce({ ok: false, code: null, timedOut: true, output });
+      }, treeKiller.closeGraceMs);
     }, opts.timeoutMs);
 
     proc.on("error", () => {
