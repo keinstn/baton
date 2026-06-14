@@ -38,35 +38,26 @@ export function normalizeCommandForBash(
 /**
  * Kill a process tree on Windows by PID. `process.kill(-pid)` is a no-op there,
  * so `taskkill /T` is the only way to reach the bash wrapper's children (the
- * real `claude.exe` / `copilot.exe`). Best-effort; spawn errors fall back.
+ * real `claude.exe` / `copilot.exe`). Best-effort: on a spawn error or non-zero
+ * taskkill exit `onError` runs (e.g. a single-process SIGKILL fallback). The
+ * returned promise settles once taskkill exits, so callers that must not race
+ * the kill can `await` it; fire-and-forget callers `void` it.
  */
-export function killWindowsTree(pid: number, onError: () => void): void {
-  const tk = spawn("taskkill", ["/F", "/T", "/PID", String(pid)], {
-    stdio: "ignore",
-  });
-  tk.on("error", onError);
-  // If taskkill exits non-zero the process was not killed; fall back so that
-  // proc.on("close") is guaranteed to fire and the runSubprocess Promise resolves.
-  tk.on("close", (code) => {
-    if (code !== 0) onError();
-  });
-}
-
-export function killWindowsTreeAndWait(
+export function killWindowsTree(
   pid: number,
   onError: () => void,
-): Promise<boolean> {
+): Promise<void> {
   return new Promise((resolve) => {
     const tk = spawn("taskkill", ["/F", "/T", "/PID", String(pid)], {
       stdio: "ignore",
     });
     tk.on("error", () => {
       onError();
-      resolve(false);
+      resolve();
     });
     tk.on("close", (code) => {
       if (code !== 0) onError();
-      resolve(code === 0);
+      resolve();
     });
   });
 }
@@ -83,7 +74,7 @@ export function killProcessTree(proc: ChildProcess): void {
     return;
   }
   if (process.platform === "win32") {
-    killWindowsTree(pid, () => proc.kill("SIGKILL"));
+    void killWindowsTree(pid, () => proc.kill("SIGKILL"));
     return;
   }
   try {
@@ -137,7 +128,7 @@ export async function stopSessionProcess(session: AgentSession): Promise<void> {
   if (proc.exitCode !== null) {
     await waitForProcClosed();
   } else if (process.platform === "win32" && proc.pid !== undefined) {
-    await killWindowsTreeAndWait(proc.pid, () => proc.kill("SIGKILL"));
+    await killWindowsTree(proc.pid, () => proc.kill("SIGKILL"));
     await waitForProcClosed();
   } else {
     killProcessTree(proc);
@@ -276,7 +267,7 @@ export function runSubprocess(
     const timer = setTimeout(() => {
       timedOut = true;
       if (process.platform === "win32" && proc.pid !== undefined) {
-        void killWindowsTreeAndWait(proc.pid, () => proc.kill("SIGKILL"));
+        void killWindowsTree(proc.pid, () => proc.kill("SIGKILL"));
         // Windows can delay or miss the child `close` after a forced tree kill,
         // so force-settle the turn after a short grace period — otherwise
         // timeout enforcement would hang the worker (and CI). Keep session.proc

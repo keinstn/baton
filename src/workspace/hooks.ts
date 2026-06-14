@@ -61,7 +61,7 @@ export function runHookScript(
       // agents is unsafe here; kill the single bash process on Unix, and the
       // whole tree by PID on Windows so hook children are not orphaned.
       if (platform === "win32" && proc.pid !== undefined) {
-        killWindowsTree(proc.pid, () => proc.kill("SIGKILL"));
+        void killWindowsTree(proc.pid, () => proc.kill("SIGKILL"));
         // Windows can delay or miss the child `close` after a forced tree kill,
         // so force-settle the timeout after a short grace period — otherwise the
         // hook (and its caller) would hang.
