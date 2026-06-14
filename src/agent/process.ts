@@ -117,8 +117,10 @@ export async function stopSessionProcess(session: AgentSession): Promise<void> {
   const procClosed = session.procClosed;
   if (!proc) return;
   if (proc.exitCode !== null) {
+    if (procClosed) await procClosed;
     session.proc = null;
     session.procClosed = null;
+    session.procForceClose = null;
     return;
   }
   if (process.platform === "win32" && proc.pid !== undefined) {

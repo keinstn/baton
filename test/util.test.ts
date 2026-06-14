@@ -124,4 +124,35 @@ describe("stopSessionProcess", () => {
     expect(session.proc).toBeNull();
     expect(session.procClosed).toBeNull();
   });
+
+  it("waits for procClosed even after exitCode is already set", async () => {
+    const proc = {
+      pid: undefined,
+      exitCode: 0,
+      kill: vi.fn(),
+    } as unknown as ChildProcess;
+    let releaseClose = () => {};
+    const procClosed = new Promise<void>((resolve) => {
+      releaseClose = resolve;
+    });
+    const session = {
+      workspace: "/tmp/ws",
+      agentSessionId: null,
+      proc,
+      procClosed,
+      procForceClose: null,
+      turnNumber: 0,
+    };
+    let settled = false;
+    const stopping = stopSessionProcess(session).then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    expect(session.proc).toBe(proc);
+    releaseClose();
+    await stopping;
+    expect(session.proc).toBeNull();
+    expect(session.procClosed).toBeNull();
+  });
 });
