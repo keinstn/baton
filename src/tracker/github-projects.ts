@@ -156,27 +156,12 @@ export class GitHubProjectsClient implements TrackerClient {
       status: res.status,
       duration_ms: Date.now() - startMs,
     });
-    // Retry once on HTTP 502/503 (transient overload) or 429 (rate-limited).
-    // For 429, honor Retry-After (seconds); if absent, retry immediately.
-    // Other non-2xx statuses (400, 401, 403, 500, …) are not retried.
+    // Retry once on HTTP 502/503 (transient overload). 429 (secondary rate
+    // limit) is intentionally not retried here — SPEC §11.4 requires it to
+    // surface as a transient github_api_status error so the orchestrator can
+    // skip the tick and recover on the next poll instead of blocking gql().
     if (res.status === 502 || res.status === 503) {
       this.logger?.debug(`github api: HTTP ${res.status}, retrying`);
-      try {
-        res = await doFetch();
-      } catch (retryErr) {
-        throw new BatonError("github_api_request", String(retryErr), {
-          cause: retryErr,
-        });
-      }
-    } else if (res.status === 429) {
-      const retryAfter = res.headers.get("Retry-After");
-      const delayMs = retryAfter !== null ? parseInt(retryAfter, 10) * 1000 : 0;
-      this.logger?.debug("github api: HTTP 429, retrying", {
-        delay_ms: delayMs,
-      });
-      if (delayMs > 0) {
-        await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
-      }
       try {
         res = await doFetch();
       } catch (retryErr) {

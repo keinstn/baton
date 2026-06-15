@@ -480,45 +480,16 @@ describe("error mapping (SPEC §11.4)", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("retries once on HTTP 429 without Retry-After immediately", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(errorResponse(429))
-      .mockResolvedValueOnce(gqlResponse(PROJECT_DATA))
-      .mockResolvedValueOnce(
-        gqlResponse(itemsPage([item(1, "Todo")], null, false)),
-      );
+  it("does not retry HTTP 429 (surfaces as github_api_status per SPEC §11.4)", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(errorResponse(429));
     const c = new GitHubProjectsClient(
       trackerConfig(),
       fetchMock as unknown as typeof fetch,
     );
-    const issues = await c.fetchCandidateIssues();
-    expect(issues).toHaveLength(1);
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-  });
-
-  it("retries once on HTTP 429 with Retry-After and delays", async () => {
-    vi.useFakeTimers();
-    try {
-      const fetchMock = vi
-        .fn()
-        .mockResolvedValueOnce(errorResponse(429, { "Retry-After": "2" }))
-        .mockResolvedValueOnce(gqlResponse(PROJECT_DATA))
-        .mockResolvedValueOnce(
-          gqlResponse(itemsPage([item(1, "Todo")], null, false)),
-        );
-      const c = new GitHubProjectsClient(
-        trackerConfig(),
-        fetchMock as unknown as typeof fetch,
-      );
-      const issuePromise = c.fetchCandidateIssues();
-      await vi.advanceTimersByTimeAsync(2000);
-      const issues = await issuePromise;
-      expect(issues).toHaveLength(1);
-      expect(fetchMock).toHaveBeenCalledTimes(3);
-    } finally {
-      vi.useRealTimers();
-    }
+    await expect(c.fetchCandidateIssues()).rejects.toMatchObject({
+      code: "github_api_status",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 
