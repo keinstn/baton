@@ -104,7 +104,7 @@ export class ClaudeCodeRunner implements AgentRunner {
     const accum: TurnAccum = {
       inputTokens: 0,
       outputTokens: 0,
-      resultUsageEmitted: false,
+      resultSeen: false,
     };
     // Prompt is delivered on stdin to avoid argv length limits (SPEC §10.1).
     const result = await runSubprocess(session, {
@@ -116,10 +116,10 @@ export class ClaudeCodeRunner implements AgentRunner {
       logger: this.logger,
       treeKiller: this.platform.treeKiller,
     });
-    // If the result line was killed before emitting usage, emit best-effort usage
+    // If the result line was killed before it arrived, emit best-effort usage
     // derived from assistant messages so the orchestrator can still accumulate it.
     if (
-      !accum.resultUsageEmitted &&
+      !accum.resultSeen &&
       (accum.inputTokens > 0 || accum.outputTokens > 0)
     ) {
       onEvent({
@@ -193,7 +193,7 @@ export class ClaudeCodeRunner implements AgentRunner {
       case "result": {
         const ok = msg.is_error !== true;
         const usage = readUsage(msg.usage);
-        if (usage) accum.resultUsageEmitted = true;
+        accum.resultSeen = true;
         onEvent({
           event: ok ? "turn_completed" : "turn_failed",
           timestamp: now(),
@@ -228,7 +228,7 @@ export class ClaudeCodeRunner implements AgentRunner {
 interface TurnAccum {
   inputTokens: number;
   outputTokens: number;
-  resultUsageEmitted: boolean;
+  resultSeen: boolean;
 }
 
 function readUsage(

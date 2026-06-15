@@ -195,6 +195,26 @@ echo '{"type":"result","subtype":"success","is_error":false,"result":"done","usa
     });
   });
 
+  it("does not emit spurious turn_cancelled when result line has no usage", async () => {
+    const { command, workspace } = await fakeClaude(`
+echo '{"type":"system","subtype":"init","session_id":"sess-nousage"}'
+echo '{"type":"assistant","message":{"content":[{"type":"text","text":"working"}],"usage":{"input_tokens":100,"output_tokens":10}}}'
+echo '{"type":"result","subtype":"success","is_error":false,"result":"done"}'
+`);
+    const r = runner(command);
+    const session = await r.startSession(workspace);
+    const events: AgentEvent[] = [];
+    const result = await r.runTurn(session, "do the thing", (e) =>
+      events.push(e),
+    );
+
+    expect(result.ok).toBe(true);
+    // result line was seen (no usage in it), so no fallback turn_cancelled
+    const usageEvents = events.filter((e) => e.usage !== undefined);
+    expect(usageEvents).toHaveLength(0);
+    expect(events.map((e) => e.event)).not.toContain("turn_cancelled");
+  });
+
   it("resumes the session on continuation turns and emits session_started once (SPEC §10.1, §17.5)", async () => {
     const dir = await mkdtemp(join(tmpdir(), "baton-cc-"));
     const argsLogFs = join(dir, "args.log");
