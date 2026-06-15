@@ -21,6 +21,22 @@ function isGoawayError(err: unknown): boolean {
   return false;
 }
 
+/**
+ * Walk the error cause chain looking for transient network errors that warrant
+ * a single retry: ECONNRESET (idle-connection reset) or ETIMEDOUT (stalled
+ * connection).
+ */
+function isRetryableNetworkError(err: unknown): boolean {
+  const retryableCodes = new Set(["ECONNRESET", "ETIMEDOUT"]);
+  let cur: unknown = err;
+  while (cur instanceof Error) {
+    const code = (cur as NodeJS.ErrnoException).code;
+    if (code !== undefined && retryableCodes.has(code)) return true;
+    cur = (cur as Error & { cause?: unknown }).cause;
+  }
+  return false;
+}
+
 export interface ProjectMeta {
   projectId: string;
   statusOptions: string[];
@@ -119,10 +135,11 @@ export class GitHubProjectsClient implements TrackerClient {
     try {
       res = await doFetch();
     } catch (err) {
-      // HTTP/2 GOAWAY (code 0 = graceful shutdown): the server closed the
-      // connection normally; retry once so undici opens a fresh connection.
-      if (isGoawayError(err)) {
-        this.logger?.debug("github api: GOAWAY received, retrying");
+      // Retry once on HTTP/2 GOAWAY or transient network errors (ECONNRESET,
+      // ETIMEDOUT, AbortError). ENOTFOUND and other non-transient errors throw
+      // immediately.
+      if (isGoawayError(err) || isRetryableNetworkError(err)) {
+        this.logger?.debug("github api: transient network error, retrying");
         try {
           res = await doFetch();
         } catch (retryErr) {
@@ -138,6 +155,21 @@ export class GitHubProjectsClient implements TrackerClient {
       status: res.status,
       duration_ms: Date.now() - startMs,
     });
+    // Retry once on HTTP 502/503 (transient overload). 429 (secondary rate
+    // limit) is intentionally not retried here — SPEC §11.4 requires it to
+    // surface as a transient github_api_status error so the orchestrator can
+    // skip the tick and recover on the next poll instead of blocking gql().
+    if (res.status === 502 || res.status === 503) {
+      this.logger?.debug(`github api: HTTP ${res.status}, retrying`);
+      await res.body?.cancel().catch(() => undefined);
+      try {
+        res = await doFetch();
+      } catch (retryErr) {
+        throw new BatonError("github_api_request", String(retryErr), {
+          cause: retryErr,
+        });
+      }
+    }
     if (!res.ok) {
       throw new BatonError(
         "github_api_status",

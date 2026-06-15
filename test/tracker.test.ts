@@ -268,14 +268,23 @@ describe("candidate fetch and normalization (SPEC §11.2-11.3)", () => {
   });
 });
 
+function errorResponse(
+  status: number,
+  headers: Record<string, string> = {},
+): Response {
+  const h = new Map(Object.entries(headers));
+  return {
+    ok: false,
+    status,
+    headers: { get: (name: string) => h.get(name) ?? null },
+    json: async () => ({}),
+  } as unknown as Response;
+}
+
 describe("error mapping (SPEC §11.4)", () => {
   it("maps non-200 responses to github_api_status", async () => {
-    const res = {
-      ok: false,
-      status: 502,
-      json: async () => ({}),
-    } as unknown as Response;
-    const { client: c } = client([res]);
+    // 500 is not in the retry list — throws immediately
+    const { client: c } = client([errorResponse(500)]);
     await expect(c.fetchCandidateIssues()).rejects.toMatchObject({
       code: "github_api_status",
     });
@@ -340,6 +349,142 @@ describe("error mapping (SPEC §11.4)", () => {
       code: "github_api_request",
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries once on ECONNRESET and succeeds", async () => {
+    const econnresetErr = Object.assign(new TypeError("fetch failed"), {
+      cause: Object.assign(new Error("read ECONNRESET"), {
+        code: "ECONNRESET",
+      }),
+    });
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(econnresetErr)
+      .mockResolvedValueOnce(gqlResponse(PROJECT_DATA))
+      .mockResolvedValueOnce(
+        gqlResponse(itemsPage([item(1, "Todo")], null, false)),
+      );
+    const c = new GitHubProjectsClient(
+      trackerConfig(),
+      fetchMock as unknown as typeof fetch,
+    );
+    const issues = await c.fetchCandidateIssues();
+    expect(issues).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("retries once on ETIMEDOUT and succeeds", async () => {
+    const etimedoutErr = Object.assign(new TypeError("fetch failed"), {
+      cause: Object.assign(new Error("connect ETIMEDOUT"), {
+        code: "ETIMEDOUT",
+      }),
+    });
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(etimedoutErr)
+      .mockResolvedValueOnce(gqlResponse(PROJECT_DATA))
+      .mockResolvedValueOnce(
+        gqlResponse(itemsPage([item(1, "Todo")], null, false)),
+      );
+    const c = new GitHubProjectsClient(
+      trackerConfig(),
+      fetchMock as unknown as typeof fetch,
+    );
+    const issues = await c.fetchCandidateIssues();
+    expect(issues).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not retry AbortError / TimeoutError (not a TCP-level failure)", async () => {
+    const abortErr = Object.assign(new TypeError("fetch failed"), {
+      cause: Object.assign(new Error("This operation was aborted"), {
+        name: "AbortError",
+      }),
+    });
+    const fetchMock = vi.fn().mockRejectedValueOnce(abortErr);
+    const c = new GitHubProjectsClient(
+      trackerConfig(),
+      fetchMock as unknown as typeof fetch,
+    );
+    await expect(c.fetchCandidateIssues()).rejects.toMatchObject({
+      code: "github_api_request",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry ENOTFOUND (DNS failure)", async () => {
+    const enotfoundErr = Object.assign(new TypeError("fetch failed"), {
+      cause: Object.assign(new Error("getaddrinfo ENOTFOUND api.github.com"), {
+        code: "ENOTFOUND",
+      }),
+    });
+    const fetchMock = vi.fn().mockRejectedValueOnce(enotfoundErr);
+    const c = new GitHubProjectsClient(
+      trackerConfig(),
+      fetchMock as unknown as typeof fetch,
+    );
+    await expect(c.fetchCandidateIssues()).rejects.toMatchObject({
+      code: "github_api_request",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries once on HTTP 502 and succeeds", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(errorResponse(502))
+      .mockResolvedValueOnce(gqlResponse(PROJECT_DATA))
+      .mockResolvedValueOnce(
+        gqlResponse(itemsPage([item(1, "Todo")], null, false)),
+      );
+    const c = new GitHubProjectsClient(
+      trackerConfig(),
+      fetchMock as unknown as typeof fetch,
+    );
+    const issues = await c.fetchCandidateIssues();
+    expect(issues).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("retries once on HTTP 503 and succeeds", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(errorResponse(503))
+      .mockResolvedValueOnce(gqlResponse(PROJECT_DATA))
+      .mockResolvedValueOnce(
+        gqlResponse(itemsPage([item(1, "Todo")], null, false)),
+      );
+    const c = new GitHubProjectsClient(
+      trackerConfig(),
+      fetchMock as unknown as typeof fetch,
+    );
+    const issues = await c.fetchCandidateIssues();
+    expect(issues).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not retry HTTP 401", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(errorResponse(401));
+    const c = new GitHubProjectsClient(
+      trackerConfig(),
+      fetchMock as unknown as typeof fetch,
+    );
+    await expect(c.fetchCandidateIssues()).rejects.toMatchObject({
+      code: "github_api_status",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry HTTP 429 (surfaces as github_api_status per SPEC §11.4)", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(errorResponse(429));
+    const c = new GitHubProjectsClient(
+      trackerConfig(),
+      fetchMock as unknown as typeof fetch,
+    );
+    await expect(c.fetchCandidateIssues()).rejects.toMatchObject({
+      code: "github_api_status",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 
