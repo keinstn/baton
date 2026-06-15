@@ -162,6 +162,7 @@ export class GitHubProjectsClient implements TrackerClient {
     // skip the tick and recover on the next poll instead of blocking gql().
     if (res.status === 502 || res.status === 503) {
       this.logger?.debug(`github api: HTTP ${res.status}, retrying`);
+      await res.body?.cancel().catch(() => undefined);
       try {
         res = await doFetch();
       } catch (retryErr) {
