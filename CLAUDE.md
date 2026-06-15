@@ -21,7 +21,7 @@ CI (PRs to main) runs lint, typecheck, and test — all three must pass.
 
 Baton is a long-running daemon that polls a **GitHub Projects v2** board, claims eligible issues, and runs a coding agent (**Claude Code CLI** or **Copilot CLI**) in an isolated per-issue workspace. It is a port of OpenAI's Symphony service with two adapter layers swapped (tracker: Linear → GitHub Projects; agent: Codex app-server → Claude Code / Copilot).
 
-**`docs/SPEC.md` is normative.** Code comments cite it (`SPEC §8.5` etc.) — preserve and add these citations when touching orchestration logic. `docs/DESIGN.md` (Japanese) covers implementation design decisions; where it disagrees with the code, the code wins (e.g. DESIGN sketches the Agent SDK, but the actual adapter spawns the CLI as a subprocess).
+**`docs/SPEC.md` is normative.** Code comments cite it (`SPEC §8.5` etc.) — preserve and add these citations when touching orchestration logic. Where SPEC disagrees with the code, the code wins (e.g. SPEC mentions the Agent SDK, but the actual adapter spawns the CLI as a subprocess).
 
 Key boundary: **the orchestrator only reads the tracker.** All tracker writes (status moves, comments, PR creation) are performed by the agent itself inside the workspace via the `gh` CLI, as instructed by the prompt in `WORKFLOW.md`.
 

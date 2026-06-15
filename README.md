@@ -22,14 +22,13 @@ follows the Symphony spec unchanged.
 
 > [!WARNING]
 > Baton runs coding agents with auto-approved permissions in trusted environments. Read the
-> Security section of the spec before pointing it at a real board.
+> [Security](#security) section before pointing it at a real board.
 
 ## Documents
 
 - [`docs/SPEC.md`](docs/SPEC.md) — the Baton service specification (language-agnostic, normative,
   same chapter structure as Symphony's `SPEC.md`)
-- [`docs/DESIGN.md`](docs/DESIGN.md) — implementation design: architecture, adapter mappings,
-  module layout, and the phased implementation plan (TypeScript / Node.js)
+- [`CLAUDE.md`](CLAUDE.md) — architecture overview and implementation conventions for contributors
 
 ## Installation
 
@@ -197,6 +196,26 @@ flowchart TD
     ClaudeCode -->|"gh CLI: comment · PR · status update"| Board
     CopilotCLI -->|"gh CLI: comment · PR · status update"| Board
 ```
+
+## Security
+
+Baton runs a coding agent with auto-approved permissions, so treat its configuration as a
+security boundary. The full model is in [`docs/SPEC.md` §15](docs/SPEC.md); the operational
+essentials:
+
+- **Issue content is untrusted input.** On public repositories, issue titles, bodies, and
+  comments are externally controlled — treat them as potential prompt injection. Gate dispatch
+  with `required_labels` (a label only maintainers can apply) so only triaged issues reach the
+  agent.
+- **Keep the tool allowlist minimal.** Grant only what the workflow needs (`Bash(gh:*)`,
+  `Bash(git:*)`, the project's build/test commands, `Edit`, `Write`). `bypassPermissions`
+  (Claude Code) and `allow_all_tools` (Copilot) MUST be an explicit, deliberate operator choice.
+- **Scope the token narrowly.** Use a fine-grained PAT (or GitHub App) limited to the target
+  repositories and the minimum scopes. The orchestrator only needs Projects read; the agent's
+  `gh` writes can use a separately scoped token.
+- **Require human review of agent output.** Enable branch protection and required PR review on
+  target repositories so agent-authored changes cannot merge unreviewed. Consider running the
+  workspace root under a dedicated OS user or container sandbox.
 
 ## License
 
