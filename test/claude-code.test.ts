@@ -150,6 +150,51 @@ describe("runTurn stream-json parsing (SPEC §10.1)", () => {
     expect(Date.now() - start).toBeLessThan(5000);
   });
 
+  it("emits best-effort usage from assistant messages when killed before result", async () => {
+    const { command, workspace } = await fakeClaude(`
+echo '{"type":"system","subtype":"init","session_id":"sess-kill"}'
+echo '{"type":"assistant","message":{"content":[{"type":"text","text":"thinking"}],"usage":{"input_tokens":100,"output_tokens":10}}}'
+echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash"}],"usage":{"input_tokens":150,"output_tokens":20}}}'
+`);
+    const r = runner(command);
+    const session = await r.startSession(workspace);
+    const events: AgentEvent[] = [];
+    await r.runTurn(session, "do the thing", (e) => events.push(e));
+
+    const usageEvents = events.filter((e) => e.usage !== undefined);
+    expect(usageEvents).toHaveLength(1);
+    expect(usageEvents[0]?.event).toBe("turn_cancelled");
+    // input = latest (150), output = sum (10 + 20 = 30)
+    expect(usageEvents[0]?.usage).toEqual({
+      inputTokens: 150,
+      outputTokens: 30,
+    });
+  });
+
+  it("does not double-count usage when result line is present", async () => {
+    const { command, workspace } = await fakeClaude(`
+echo '{"type":"system","subtype":"init","session_id":"sess-dc"}'
+echo '{"type":"assistant","message":{"content":[{"type":"text","text":"working"}],"usage":{"input_tokens":100,"output_tokens":10}}}'
+echo '{"type":"result","subtype":"success","is_error":false,"result":"done","usage":{"input_tokens":200,"output_tokens":15}}'
+`);
+    const r = runner(command);
+    const session = await r.startSession(workspace);
+    const events: AgentEvent[] = [];
+    const result = await r.runTurn(session, "do the thing", (e) =>
+      events.push(e),
+    );
+
+    expect(result.ok).toBe(true);
+    // Only turn_completed carries usage; no extra turn_cancelled from accumulator
+    const usageEvents = events.filter((e) => e.usage !== undefined);
+    expect(usageEvents).toHaveLength(1);
+    expect(usageEvents[0]?.event).toBe("turn_completed");
+    expect(usageEvents[0]?.usage).toEqual({
+      inputTokens: 200,
+      outputTokens: 15,
+    });
+  });
+
   it("resumes the session on continuation turns and emits session_started once (SPEC §10.1, §17.5)", async () => {
     const dir = await mkdtemp(join(tmpdir(), "baton-cc-"));
     const argsLogFs = join(dir, "args.log");
