@@ -90,7 +90,7 @@ export class ClaudeCodeRunner implements AgentRunner {
     };
   }
 
-  runTurn(
+  async runTurn(
     session: AgentSession,
     prompt: string,
     onEvent: AgentEventCallback,
@@ -99,13 +99,42 @@ export class ClaudeCodeRunner implements AgentRunner {
     // so the agent keeps its context (SPEC §7.1, §10.1).
     session.turnNumber += 1;
     const resumeId = session.turnNumber > 1 ? session.agentSessionId : null;
+    // Per-turn accumulator: best-effort usage from assistant messages in case the
+    // result line is killed before it is emitted (SPEC §10.1).
+    const accum: TurnAccum = {
+      inputTokens: 0,
+      outputTokens: 0,
+      resultSeen: false,
+    };
+    // Wrap onEvent to inject accumulated usage into the terminal event emitted by
+    // runSubprocess when no result line arrived (timeout, kill, or crash). This
+    // preserves the one-terminal-event-per-turn invariant while still surfacing
+    // best-effort usage to the orchestrator.
+    const wrappedOnEvent: AgentEventCallback = (event) => {
+      if (
+        !accum.resultSeen &&
+        (event.event === "turn_cancelled" || event.event === "turn_failed") &&
+        !event.usage &&
+        (accum.inputTokens > 0 || accum.outputTokens > 0)
+      ) {
+        onEvent({
+          ...event,
+          usage: {
+            inputTokens: accum.inputTokens,
+            outputTokens: accum.outputTokens,
+          },
+        });
+        return;
+      }
+      onEvent(event);
+    };
     // Prompt is delivered on stdin to avoid argv length limits (SPEC §10.1).
     return runSubprocess(session, {
       command: this.buildCommand(resumeId),
       timeoutMs: this.cfg.turnTimeoutMs,
       stdin: prompt,
-      onEvent,
-      onLine: (line) => this.handleLine(session, line, onEvent),
+      onEvent: wrappedOnEvent,
+      onLine: (line) => this.handleLine(session, line, wrappedOnEvent, accum),
       logger: this.logger,
       treeKiller: this.platform.treeKiller,
     });
@@ -116,6 +145,7 @@ export class ClaudeCodeRunner implements AgentRunner {
     session: AgentSession,
     line: string,
     onEvent: AgentEventCallback,
+    accum: TurnAccum,
   ): TurnResult | null {
     const trimmed = line.trim();
     if (trimmed === "") return null;
@@ -152,12 +182,24 @@ export class ClaudeCodeRunner implements AgentRunner {
         return null;
       }
       case "assistant": {
+        // Accumulate best-effort usage from assistant messages. input_tokens grows
+        // with context size so take the latest value; output_tokens is incremental
+        // per API call so sum them. Matches what the result line would report.
+        const msgObj = msg.message as
+          | { content?: unknown; usage?: unknown }
+          | undefined;
+        const aUsage = readUsage(msgObj?.usage);
+        if (aUsage) {
+          accum.inputTokens = aUsage.inputTokens;
+          accum.outputTokens += aUsage.outputTokens;
+        }
         for (const event of summarizeAssistant(msg)) onEvent(event);
         return null;
       }
       case "result": {
         const ok = msg.is_error !== true;
         const usage = readUsage(msg.usage);
+        accum.resultSeen = true;
         onEvent({
           event: ok ? "turn_completed" : "turn_failed",
           timestamp: now(),
@@ -187,6 +229,12 @@ export class ClaudeCodeRunner implements AgentRunner {
   async stopSession(session: AgentSession): Promise<void> {
     await stopSessionProcess(session, this.platform.treeKiller);
   }
+}
+
+interface TurnAccum {
+  inputTokens: number;
+  outputTokens: number;
+  resultSeen: boolean;
 }
 
 function readUsage(
