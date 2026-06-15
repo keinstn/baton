@@ -23,14 +23,13 @@ function isGoawayError(err: unknown): boolean {
 
 /**
  * Walk the error cause chain looking for transient network errors that warrant
- * a single retry: ECONNRESET (idle-connection reset), ETIMEDOUT (stalled
- * connection), or AbortError (request timeout via AbortSignal).
+ * a single retry: ECONNRESET (idle-connection reset) or ETIMEDOUT (stalled
+ * connection).
  */
 function isRetryableNetworkError(err: unknown): boolean {
   const retryableCodes = new Set(["ECONNRESET", "ETIMEDOUT"]);
   let cur: unknown = err;
   while (cur instanceof Error) {
-    if (cur.name === "AbortError") return true;
     const code = (cur as NodeJS.ErrnoException).code;
     if (code !== undefined && retryableCodes.has(code)) return true;
     cur = (cur as Error & { cause?: unknown }).cause;

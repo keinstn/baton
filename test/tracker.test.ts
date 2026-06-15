@@ -395,26 +395,21 @@ describe("error mapping (SPEC §11.4)", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it("retries once on AbortError and succeeds", async () => {
+  it("does not retry AbortError / TimeoutError (not a TCP-level failure)", async () => {
     const abortErr = Object.assign(new TypeError("fetch failed"), {
       cause: Object.assign(new Error("This operation was aborted"), {
         name: "AbortError",
       }),
     });
-    const fetchMock = vi
-      .fn()
-      .mockRejectedValueOnce(abortErr)
-      .mockResolvedValueOnce(gqlResponse(PROJECT_DATA))
-      .mockResolvedValueOnce(
-        gqlResponse(itemsPage([item(1, "Todo")], null, false)),
-      );
+    const fetchMock = vi.fn().mockRejectedValueOnce(abortErr);
     const c = new GitHubProjectsClient(
       trackerConfig(),
       fetchMock as unknown as typeof fetch,
     );
-    const issues = await c.fetchCandidateIssues();
-    expect(issues).toHaveLength(1);
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    await expect(c.fetchCandidateIssues()).rejects.toMatchObject({
+      code: "github_api_request",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("does not retry ENOTFOUND (DNS failure)", async () => {
