@@ -106,32 +106,38 @@ export class ClaudeCodeRunner implements AgentRunner {
       outputTokens: 0,
       resultSeen: false,
     };
+    // Wrap onEvent to inject accumulated usage into the terminal event emitted by
+    // runSubprocess when no result line arrived (timeout, kill, or crash). This
+    // preserves the one-terminal-event-per-turn invariant while still surfacing
+    // best-effort usage to the orchestrator.
+    const wrappedOnEvent: AgentEventCallback = (event) => {
+      if (
+        !accum.resultSeen &&
+        (event.event === "turn_cancelled" || event.event === "turn_failed") &&
+        !event.usage &&
+        (accum.inputTokens > 0 || accum.outputTokens > 0)
+      ) {
+        onEvent({
+          ...event,
+          usage: {
+            inputTokens: accum.inputTokens,
+            outputTokens: accum.outputTokens,
+          },
+        });
+        return;
+      }
+      onEvent(event);
+    };
     // Prompt is delivered on stdin to avoid argv length limits (SPEC §10.1).
-    const result = await runSubprocess(session, {
+    return runSubprocess(session, {
       command: this.buildCommand(resumeId),
       timeoutMs: this.cfg.turnTimeoutMs,
       stdin: prompt,
-      onEvent,
-      onLine: (line) => this.handleLine(session, line, onEvent, accum),
+      onEvent: wrappedOnEvent,
+      onLine: (line) => this.handleLine(session, line, wrappedOnEvent, accum),
       logger: this.logger,
       treeKiller: this.platform.treeKiller,
     });
-    // If the result line was killed before it arrived, emit best-effort usage
-    // derived from assistant messages so the orchestrator can still accumulate it.
-    if (
-      !accum.resultSeen &&
-      (accum.inputTokens > 0 || accum.outputTokens > 0)
-    ) {
-      onEvent({
-        event: "turn_cancelled",
-        timestamp: now(),
-        usage: {
-          inputTokens: accum.inputTokens,
-          outputTokens: accum.outputTokens,
-        },
-      });
-    }
-    return result;
   }
 
   /** Parse one stream-json line into normalized events; return the turn result when seen. */

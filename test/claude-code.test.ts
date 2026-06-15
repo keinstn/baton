@@ -150,7 +150,7 @@ describe("runTurn stream-json parsing (SPEC §10.1)", () => {
     expect(Date.now() - start).toBeLessThan(5000);
   });
 
-  it("emits best-effort usage from assistant messages when killed before result", async () => {
+  it("injects best-effort usage into turn_failed when process exits without result", async () => {
     const { command, workspace } = await fakeClaude(`
 echo '{"type":"system","subtype":"init","session_id":"sess-kill"}'
 echo '{"type":"assistant","message":{"content":[{"type":"text","text":"thinking"}],"usage":{"input_tokens":100,"output_tokens":10}}}'
@@ -161,13 +161,72 @@ echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash"
     const events: AgentEvent[] = [];
     await r.runTurn(session, "do the thing", (e) => events.push(e));
 
-    const usageEvents = events.filter((e) => e.usage !== undefined);
-    expect(usageEvents).toHaveLength(1);
-    expect(usageEvents[0]?.event).toBe("turn_cancelled");
+    // runSubprocess emits exactly one terminal event (turn_failed for no-result exit);
+    // wrappedOnEvent injects the accumulated usage into it.
+    const terminalEvents = events.filter(
+      (e) =>
+        e.event === "turn_cancelled" ||
+        e.event === "turn_failed" ||
+        e.event === "turn_completed",
+    );
+    expect(terminalEvents).toHaveLength(1);
+    expect(terminalEvents[0]?.event).toBe("turn_failed");
     // input = latest (150), output = sum (10 + 20 = 30)
-    expect(usageEvents[0]?.usage).toEqual({
+    expect(terminalEvents[0]?.usage).toEqual({
       inputTokens: 150,
       outputTokens: 30,
+    });
+  });
+
+  it("emits exactly one turn_cancelled with no double-counting on timeout", async () => {
+    // Verifies the one-terminal-event-per-turn invariant for the timeout path.
+    // Usage injection for turn_cancelled follows the same wrappedOnEvent path as
+    // turn_failed; the crash test below covers the injection logic for both cases.
+    const { command, workspace } = await fakeClaude("sleep 30");
+    const r = runner(command, { turn_timeout_ms: 300 });
+    const session = await r.startSession(workspace);
+    const events: AgentEvent[] = [];
+    const result = await r.runTurn(session, "x", (e) => events.push(e));
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe("turn_timeout");
+    const terminalEvents = events.filter(
+      (e) =>
+        e.event === "turn_cancelled" ||
+        e.event === "turn_failed" ||
+        e.event === "turn_completed",
+    );
+    expect(terminalEvents).toHaveLength(1);
+    expect(terminalEvents[0]?.event).toBe("turn_cancelled");
+    expect(terminalEvents[0]?.usage).toBeUndefined();
+  });
+
+  it("injects best-effort usage into turn_failed when process crashes before result", async () => {
+    const { command, workspace } = await fakeClaude(`
+echo '{"type":"system","subtype":"init","session_id":"sess-crash"}'
+echo '{"type":"assistant","message":{"content":[{"type":"text","text":"working"}],"usage":{"input_tokens":200,"output_tokens":15}}}'
+exit 1
+`);
+    const r = runner(command);
+    const session = await r.startSession(workspace);
+    const events: AgentEvent[] = [];
+    const result = await r.runTurn(session, "do the thing", (e) =>
+      events.push(e),
+    );
+
+    expect(result.ok).toBe(false);
+    // Exactly one terminal event with injected usage.
+    const terminalEvents = events.filter(
+      (e) =>
+        e.event === "turn_cancelled" ||
+        e.event === "turn_failed" ||
+        e.event === "turn_completed",
+    );
+    expect(terminalEvents).toHaveLength(1);
+    expect(terminalEvents[0]?.event).toBe("turn_failed");
+    expect(terminalEvents[0]?.usage).toEqual({
+      inputTokens: 200,
+      outputTokens: 15,
     });
   });
 
