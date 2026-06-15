@@ -353,7 +353,9 @@ describe("error mapping (SPEC §11.4)", () => {
 
   it("retries once on ECONNRESET and succeeds", async () => {
     const econnresetErr = Object.assign(new TypeError("fetch failed"), {
-      cause: Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" }),
+      cause: Object.assign(new Error("read ECONNRESET"), {
+        code: "ECONNRESET",
+      }),
     });
     const fetchMock = vi
       .fn()
@@ -467,9 +469,7 @@ describe("error mapping (SPEC §11.4)", () => {
   });
 
   it("does not retry HTTP 401", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(errorResponse(401));
+    const fetchMock = vi.fn().mockResolvedValueOnce(errorResponse(401));
     const c = new GitHubProjectsClient(
       trackerConfig(),
       fetchMock as unknown as typeof fetch,
