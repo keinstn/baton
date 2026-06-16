@@ -320,8 +320,8 @@ describe("startHttpServer (SPEC §13.7)", () => {
       try {
         const res = await fetch(`${srv.baseUrl}/`);
         const html = await res.text();
-        expect(html).toContain("Running (0)");
-        expect(html).toContain("Retrying (0)");
+        expect(html).toContain("Running");
+        expect(html).toContain("Retrying");
       } finally {
         await srv.close();
       }

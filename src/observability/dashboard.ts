@@ -88,35 +88,92 @@ export function renderDashboard(snap: OrchestratorSnapshot): string {
 <meta http-equiv="refresh" content="5">
 <title>Baton — orchestrator status</title>
 <style>
-  body { font: 14px/1.5 -apple-system, system-ui, sans-serif; margin: 2rem; color: #222; }
-  h1 { margin: 0 0 0.5rem; font-size: 1.4rem; }
-  h2 { margin: 1.5rem 0 0.5rem; font-size: 1.1rem; }
-  table { border-collapse: collapse; width: 100%; }
-  th, td { border-bottom: 1px solid #eee; padding: 0.4rem 0.6rem; text-align: left; vertical-align: top; }
-  th { background: #f7f7f7; font-weight: 600; }
-  td.num { text-align: right; font-variant-numeric: tabular-nums; }
-  .empty { color: #888; font-style: italic; }
-  .muted { color: #666; }
-  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; }
+  :root {
+    --bg: #0d0d0d; --bg-surface: #111111; --bg-header: #002233;
+    --bg-row-alt: #0a1520; --border: #1e1e1e;
+    --text: #d4d4d4; --text-muted: #555;
+    --accent: #00e5ff; --accent-dim: #0099bb;
+    --link: #00e5ff; --num: #80d8ff; --code: #40c8e0;
+    --badge-running: #00e5ff; --badge-retry: #ffcc00; --indicator: #00e5ff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font: 15px/1.6 "Courier New","Menlo","Monaco",ui-monospace,monospace;
+         background: var(--bg); color: var(--text); min-height: 100vh; padding: 2rem; }
+  header { display: flex; align-items: baseline; gap: 1rem;
+           border-bottom: 1px solid var(--accent-dim); padding-bottom: 0.75rem; margin-bottom: 1.5rem; }
+  .logo { font-size: 1.6rem; font-weight: bold; color: var(--accent);
+          letter-spacing: 0.15em; text-transform: uppercase; }
+  .tagline { font-size: 0.8rem; color: var(--text-muted); letter-spacing: 0.05em; }
+  .meta { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.5rem; }
+  .meta code { color: var(--accent-dim); }
+  .stats-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 0.75rem; margin-bottom: 2rem; }
+  .stat-card { background: var(--bg-surface); border: 1px solid var(--border);
+               border-top: 2px solid var(--accent-dim); padding: 0.75rem 1rem; }
+  .stat-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;
+                letter-spacing: 0.1em; margin-bottom: 0.25rem; }
+  .stat-value { font-size: 1.4rem; font-weight: bold; color: var(--accent); font-variant-numeric: tabular-nums; }
+  section { margin-bottom: 2rem; }
+  .section-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+  h2 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--accent); }
+  .badge { font-size: 0.75rem; padding: 0.1rem 0.45rem; border-radius: 2px; font-weight: bold; }
+  .badge-running { background: var(--badge-running); color: #000; }
+  .badge-retry   { background: var(--badge-retry);   color: #000; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.88rem; }
+  th { background: var(--bg-header); color: var(--accent-dim); font-weight: normal;
+       text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.75rem;
+       padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--accent-dim); text-align: left; }
+  td { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tbody tr:nth-child(odd) { background: var(--bg-row-alt); }
+  tbody tr:hover { background: #001a28; }
+  td:first-child { border-left: 3px solid var(--indicator); }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; color: var(--num); }
+  a { color: var(--link); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code { color: var(--code); font-size: 0.9em; }
+  .empty { color: var(--text-muted); font-style: italic; padding: 0.5rem 0; }
 </style>
 </head>
 <body>
-<h1>Baton</h1>
-<p class="muted">Generated at <code>${escapeHtml(snap.generated_at)}</code> — auto-refresh every 5s.</p>
+<header>
+  <div class="logo">Baton</div>
+  <div class="tagline">orchestrator status</div>
+</header>
+<p class="meta">Generated at <code>${escapeHtml(snap.generated_at)}</code> — auto-refresh every 5s.</p>
 
-<h2>Totals</h2>
-<table>
-  <tr><th>Input tokens</th><td class="num">${totals.input_tokens}</td></tr>
-  <tr><th>Output tokens</th><td class="num">${totals.output_tokens}</td></tr>
-  <tr><th>Total tokens</th><td class="num">${totals.total_tokens}</td></tr>
-  <tr><th>Seconds running</th><td class="num">${totals.seconds_running.toFixed(1)}</td></tr>
-</table>
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-label">Input tokens</div>
+    <div class="stat-value">${totals.input_tokens}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Output tokens</div>
+    <div class="stat-value">${totals.output_tokens}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Total tokens</div>
+    <div class="stat-value">${totals.total_tokens}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Seconds running</div>
+    <div class="stat-value">${totals.seconds_running.toFixed(1)}</div>
+  </div>
+</div>
 
-<h2>Running (${snap.running.length})</h2>
-${renderRunningTable(snap.running)}
+<section>
+  <div class="section-header">
+    <h2>Running</h2>
+    <span class="badge badge-running">${snap.running.length}</span>
+  </div>
+  ${renderRunningTable(snap.running)}
+</section>
 
-<h2>Retrying (${snap.retrying.length})</h2>
-${renderRetryingTable(snap.retrying)}
+<section>
+  <div class="section-header">
+    <h2>Retrying</h2>
+    <span class="badge badge-retry">${snap.retrying.length}</span>
+  </div>
+  ${renderRetryingTable(snap.retrying)}
+</section>
 </body>
 </html>
 `;
