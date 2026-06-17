@@ -369,6 +369,47 @@ describe("createPoller — start/stop", () => {
     );
   });
 
+  it("stop/start cycle does not cause a double-poll loop", async () => {
+    // If stop() is called while an in-flight pollAll() is pending and then
+    // start() is re-called, the stale loop must not schedule a second timer
+    // after it completes (runId mismatch prevents this).
+    let resolvePoll!: () => void;
+    let pollCount = 0;
+    const fetchMock = vi.fn(async () => {
+      pollCount++;
+      if (pollCount === 1) {
+        // First poll hangs until we release it
+        await new Promise<void>((r) => {
+          resolvePoll = r;
+        });
+      }
+      return Response.json(makeSnapshot());
+    }) as unknown as typeof globalThis.fetch;
+
+    const poller = createPoller({
+      config: makeConfig([{ name: "alpha", url: "http://localhost:8001" }], 50),
+      fetch: fetchMock,
+    });
+
+    poller.start(); // starts loop #1 (poll hangs)
+    await new Promise((r) => setTimeout(r, 5)); // let loop #1 enter pollAll
+    poller.stop(); // increments runId; loop #1 is still in-flight
+    poller.start(); // starts loop #2 (poll resolves immediately)
+    await new Promise((r) => setTimeout(r, 20)); // let loop #2 settle
+
+    const callsAfterSecondStart = (fetchMock as ReturnType<typeof vi.fn>).mock
+      .calls.length;
+    resolvePoll(); // unblock the stale loop #1
+    await new Promise((r) => setTimeout(r, 80)); // wait past poll interval
+
+    poller.stop();
+    // Loop #1 completing after stop/start must NOT schedule an extra timer.
+    // Only loop #2's immediate poll + any interval polls should have run.
+    expect(
+      (fetchMock as ReturnType<typeof vi.fn>).mock.calls.length,
+    ).toBeLessThanOrEqual(callsAfterSecondStart + 2);
+  });
+
   it("calling start() twice does not double-poll", async () => {
     const fetchMock = okFetch(makeSnapshot());
     const poller = createPoller({

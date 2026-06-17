@@ -119,6 +119,7 @@ export function createPoller(deps: PollerDeps): Poller {
   );
 
   let started = false;
+  let runId = 0;
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
   async function pollAll(): Promise<void> {
@@ -134,11 +135,13 @@ export function createPoller(deps: PollerDeps): Poller {
     );
   }
 
-  async function loop(): Promise<void> {
+  async function loop(myRunId: number): Promise<void> {
     await pollAll();
-    if (started) {
-      timeoutId = setTimeout(() => void loop(), deps.config.pollIntervalMs);
-    }
+    if (!started || myRunId !== runId) return;
+    timeoutId = setTimeout(
+      () => void loop(myRunId),
+      deps.config.pollIntervalMs,
+    );
   }
 
   return {
@@ -178,11 +181,13 @@ export function createPoller(deps: PollerDeps): Poller {
     start(): void {
       if (started) return;
       started = true;
-      void loop();
+      runId += 1;
+      void loop(runId);
     },
 
     stop(): void {
       started = false;
+      runId += 1;
       if (timeoutId !== null) {
         clearTimeout(timeoutId);
         timeoutId = null;
