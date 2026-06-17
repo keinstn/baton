@@ -6,6 +6,13 @@ import {
 } from "node:http";
 import type { OrchestratorSnapshot } from "../orchestrator/orchestrator.js";
 import { renderDashboard } from "./dashboard.js";
+import {
+  exact,
+  pattern,
+  sendError,
+  sendJson,
+  sendMethodNotAllowed,
+} from "./http-util.js";
 import type { Logger } from "./logger.js";
 
 export interface HttpServerDeps {
@@ -26,10 +33,6 @@ export interface RunningHttpServer {
   /** Resolved port (useful when starting on `port: 0` for tests). */
   port: number;
   close(): Promise<void>;
-}
-
-interface ErrorEnvelope {
-  error: { code: string; message: string };
 }
 
 /**
@@ -92,18 +95,6 @@ interface Route {
   methods: string[];
   handle(ctx: RouteContext): void;
 }
-
-const exact =
-  (p: string) =>
-  (path: string): string[] | null =>
-    path === p ? [] : null;
-
-const pattern =
-  (re: RegExp) =>
-  (path: string): string[] | null => {
-    const m = re.exec(path);
-    return m ? m.slice(1) : null;
-  };
 
 /**
  * Route table, matched top-to-bottom. The exact `/api/v1/state` and
@@ -191,44 +182,6 @@ function handleIdentifier({ res, deps, method, params }: RouteContext): void {
       generated_at: snap.generated_at,
     },
     method === "HEAD",
-  );
-}
-
-function sendJson(
-  res: ServerResponse,
-  status: number,
-  body: unknown,
-  headOnly = false,
-): void {
-  const payload = `${JSON.stringify(body)}\n`;
-  res.statusCode = status;
-  res.setHeader("Content-Type", "application/json; charset=utf-8");
-  res.setHeader("Content-Length", Buffer.byteLength(payload).toString());
-  res.setHeader("Cache-Control", "no-store");
-  if (headOnly) {
-    res.end();
-  } else {
-    res.end(payload);
-  }
-}
-
-function sendError(
-  res: ServerResponse,
-  status: number,
-  code: string,
-  message: string,
-): void {
-  const env: ErrorEnvelope = { error: { code, message } };
-  sendJson(res, status, env);
-}
-
-function sendMethodNotAllowed(res: ServerResponse, allowed: string[]): void {
-  res.setHeader("Allow", allowed.join(", "));
-  sendError(
-    res,
-    405,
-    "method_not_allowed",
-    `allowed methods: ${allowed.join(", ")}`,
   );
 }
 
