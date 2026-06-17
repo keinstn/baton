@@ -120,6 +120,13 @@ export function createPoller(deps: PollerDeps): Poller {
   );
 
   let started = false;
+  /**
+   * Monotonically increasing generation for the current poller run.
+   *
+   * Passed into `loop()` / `pollAll()` so that stale async work finishing after
+   * a `stop()` / `start()` boundary can detect it is outdated and skip both
+   * rescheduling and cache writes.
+   */
   let runId = 0;
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
 

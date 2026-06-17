@@ -7,6 +7,13 @@ function asString(v: unknown, fallback = ""): string {
   return typeof v === "string" ? v : fallback;
 }
 
+/**
+ * Normalizes a single running-entry payload from an upstream board.
+ *
+ * Required identity fields must be present or the entry is dropped entirely;
+ * optional / malformed fields are coerced to safe fallbacks so one bad row
+ * cannot crash the aggregated dashboard or skew totals vs. rendering.
+ */
 export function normalizeRunningEntry(v: unknown): SnapshotRunning | null {
   if (typeof v !== "object" || v === null) return null;
   const r = v as Record<string, unknown>;
@@ -33,6 +40,12 @@ export function normalizeRunningEntry(v: unknown): SnapshotRunning | null {
   };
 }
 
+/**
+ * Normalizes a single retrying-entry payload from an upstream board.
+ *
+ * Same defensive contract as `normalizeRunningEntry`: required fields gate
+ * inclusion, optional fields fall back to safe defaults.
+ */
 export function normalizeRetryingEntry(v: unknown): SnapshotRetrying | null {
   if (typeof v !== "object" || v === null) return null;
   const r = v as Record<string, unknown>;
