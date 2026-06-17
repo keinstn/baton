@@ -8,11 +8,15 @@ import type { OrchestratorSnapshot } from "../orchestrator/orchestrator.js";
 import type { BoardState } from "./config.js";
 import type { AggregatedTotals } from "./poller.js";
 
+function isValidSnapshot(v: unknown): v is OrchestratorSnapshot {
+  if (typeof v !== "object" || v === null) return false;
+  const s = v as Record<string, unknown>;
+  return Array.isArray(s.running) && Array.isArray(s.retrying);
+}
+
 function renderBoardSection(board: BoardState): string {
-  const snap =
-    board.up && board.snapshot
-      ? (board.snapshot as OrchestratorSnapshot)
-      : null;
+  const raw = board.up && board.snapshot ? board.snapshot : null;
+  const snap = raw !== null && isValidSnapshot(raw) ? raw : null;
   const upBadge = board.up
     ? `<span class="badge badge-up">UP</span>`
     : `<span class="badge badge-down">DOWN</span>`;

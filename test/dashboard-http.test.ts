@@ -216,6 +216,22 @@ describe("startDashboardServer — GET /", () => {
     }
   });
 
+  it("renders board as down/empty when snapshot has unexpected shape", async () => {
+    const boards = [
+      makeBoard({ name: "malformed", snapshot: { not_running: "oops" } }),
+    ];
+    const srv = await startTestServer({ boards });
+    try {
+      const res = await fetch(`${srv.baseUrl}/`);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("malformed");
+      expect(html).toContain("none");
+    } finally {
+      await srv.close();
+    }
+  });
+
   it("HEAD / returns 200 with Content-Length matching GET and no body", async () => {
     const srv = await startTestServer();
     try {
@@ -449,6 +465,53 @@ describe("startDashboardServer — POST /api/v1/boards/<name>/refresh", () => {
       expect(res.status).toBe(405);
       expect(res.headers.get("allow")).toBe("POST");
       expect(mockFetch).not.toHaveBeenCalled();
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it("returns 504 when the upstream fetch is aborted (timeout)", async () => {
+    const mockFetch = vi.fn(async () => {
+      const err = Object.assign(new Error("The operation was aborted."), {
+        name: "AbortError",
+      });
+      throw err;
+    }) as unknown as typeof globalThis.fetch;
+
+    const srv = await startTestServer({ fetch: mockFetch });
+    try {
+      const res = await fetch(`${srv.baseUrl}/api/v1/boards/alpha/refresh`, {
+        method: "POST",
+      });
+      expect(res.status).toBe(504);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe("gateway_timeout");
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it("uses new URL() so a trailing slash on board.url does not double the slash", async () => {
+    const mockFetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ accepted: true }), {
+          status: 202,
+          headers: { "content-type": "application/json" },
+        }),
+    ) as unknown as typeof globalThis.fetch;
+
+    const srv = await startTestServer({
+      boards: [makeBoard({ url: "http://localhost:8001/" })],
+      fetch: mockFetch,
+    });
+    try {
+      await fetch(`${srv.baseUrl}/api/v1/boards/alpha/refresh`, {
+        method: "POST",
+      });
+      const [url] = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
+        string,
+      ];
+      expect(url).toBe("http://localhost:8001/api/v1/refresh");
     } finally {
       await srv.close();
     }

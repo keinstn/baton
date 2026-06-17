@@ -195,9 +195,15 @@ async function handleBoardRefresh(
     return;
   }
   const fetchFn = deps.fetch ?? globalThis.fetch;
-  const refreshUrl = `${board.url}/api/v1/refresh`;
+  const refreshUrl = new URL("/api/v1/refresh", board.url).href;
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 10_000);
   try {
-    const proxyRes = await fetchFn(refreshUrl, { method: "POST" });
+    const proxyRes = await fetchFn(refreshUrl, {
+      method: "POST",
+      signal: ac.signal,
+    });
+    clearTimeout(timer);
     if (!proxyRes.ok) {
       sendError(
         res,
@@ -209,7 +215,15 @@ async function handleBoardRefresh(
     }
     sendJson(res, 202, { accepted: true });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    sendError(res, 502, "bad_gateway", `upstream refresh failed: ${msg}`);
+    clearTimeout(timer);
+    if (
+      err instanceof Error &&
+      (err.name === "AbortError" || err.name === "TimeoutError")
+    ) {
+      sendError(res, 504, "gateway_timeout", "upstream refresh timed out");
+    } else {
+      const msg = err instanceof Error ? err.message : String(err);
+      sendError(res, 502, "bad_gateway", `upstream refresh failed: ${msg}`);
+    }
   }
 }
