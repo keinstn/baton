@@ -256,10 +256,44 @@ describe("createPoller — isolation (one target failure does not affect others)
   });
 });
 
+function makeRunningEntry(id: string) {
+  return {
+    identifier: id,
+    issue_id: "",
+    issue_url: null,
+    title: `Issue ${id}`,
+    state: null,
+    turn_count: 0,
+    session_id: null,
+    started_at: "2026-06-17T00:00:00.000Z",
+    last_event: null,
+    last_event_at: null,
+    input_tokens: 0,
+    output_tokens: 0,
+    total_tokens: 0,
+    retry_attempt: null,
+    failure_attempt: 0,
+  };
+}
+
+function makeRetryingEntry(id: string) {
+  return {
+    identifier: id,
+    issue_id: "",
+    issue_url: null,
+    title: `Issue ${id}`,
+    attempt: 0,
+    prompt_attempt: null,
+    scheduled_at: "2026-06-17T00:00:00.000Z",
+    fires_at: "2026-06-17T00:01:00.000Z",
+    delay_ms: 0,
+  };
+}
+
 describe("createPoller — totals() aggregation", () => {
   it("sums agent_totals across all up boards", async () => {
     const snap1 = makeSnapshot({
-      running: [{ identifier: "r1" } as never],
+      running: [makeRunningEntry("r1")],
       retrying: [],
       agent_totals: {
         input_tokens: 100,
@@ -270,7 +304,7 @@ describe("createPoller — totals() aggregation", () => {
     });
     const snap2 = makeSnapshot({
       running: [],
-      retrying: [{ identifier: "r2" } as never],
+      retrying: [makeRetryingEntry("r2")],
       agent_totals: {
         input_tokens: 200,
         output_tokens: 100,
@@ -300,6 +334,36 @@ describe("createPoller — totals() aggregation", () => {
     expect(t.output_tokens).toBe(150);
     expect(t.total_tokens).toBe(450);
     expect(t.seconds_running).toBe(30);
+    expect(t.running).toBe(1);
+    expect(t.retrying).toBe(1);
+  });
+
+  it("totals() only counts valid (normalizable) entries, matching what render displays", async () => {
+    // One valid running entry + one malformed (missing title/started_at) → count = 1
+    const snap = makeSnapshot({
+      running: [
+        makeRunningEntry("valid-1"),
+        { identifier: "bad-no-title" } as never,
+        { identifier: "bad-no-started-at", title: "oops" } as never,
+      ],
+      retrying: [
+        makeRetryingEntry("valid-r1"),
+        { identifier: "bad-retrying" } as never,
+      ],
+    });
+    const fetchMock = vi.fn(async () =>
+      Response.json(snap),
+    ) as unknown as typeof globalThis.fetch;
+
+    const poller = createPoller({
+      config: makeConfig([{ name: "alpha", url: "http://localhost:8001" }]),
+      fetch: fetchMock,
+    });
+    poller.start();
+    await new Promise((r) => setTimeout(r, 20));
+    poller.stop();
+
+    const t = poller.totals();
     expect(t.running).toBe(1);
     expect(t.retrying).toBe(1);
   });
@@ -408,6 +472,59 @@ describe("createPoller — start/stop", () => {
     expect(
       (fetchMock as ReturnType<typeof vi.fn>).mock.calls.length,
     ).toBeLessThanOrEqual(callsAfterSecondStart + 2);
+  });
+
+  it("stale in-flight poll does not overwrite cache written by the new run", async () => {
+    // Scenario: stop() called while poll #1 is in-flight, start() re-called.
+    // Poll #1 (stale) must not clobber the fresh state written by poll #2.
+    const staleSnap = makeSnapshot({
+      generated_at: "2026-06-01T00:00:00.000Z",
+    });
+    const freshSnap = makeSnapshot({
+      generated_at: "2026-06-17T00:00:00.000Z",
+    });
+    let resolveStale!: () => void;
+    let callCount = 0;
+
+    const fetchMock = vi.fn(async () => {
+      callCount++;
+      if (callCount === 1) {
+        // First call hangs until released (simulates stale in-flight)
+        await new Promise<void>((r) => {
+          resolveStale = r;
+        });
+        return Response.json(staleSnap);
+      }
+      return Response.json(freshSnap);
+    }) as unknown as typeof globalThis.fetch;
+
+    const poller = createPoller({
+      config: makeConfig([{ name: "alpha", url: "http://localhost:8001" }]),
+      fetch: fetchMock,
+    });
+
+    poller.start(); // poll #1 hangs (stale)
+    await new Promise((r) => setTimeout(r, 5)); // let poll #1 enter fetch
+    poller.stop();
+    poller.start(); // poll #2 completes with freshSnap
+    await new Promise((r) => setTimeout(r, 20)); // poll #2 resolves
+
+    // Cache now holds freshSnap from poll #2
+    const snapBefore = (
+      poller.boards()[0]?.snapshot as { generated_at: string } | undefined
+    )?.generated_at;
+
+    resolveStale(); // unblock stale poll #1
+    await new Promise((r) => setTimeout(r, 20)); // let it try to write
+
+    poller.stop();
+    const snapAfter = (
+      poller.boards()[0]?.snapshot as { generated_at: string } | undefined
+    )?.generated_at;
+
+    // Stale poll #1's result must NOT have overwritten freshSnap
+    expect(snapBefore).toBe("2026-06-17T00:00:00.000Z");
+    expect(snapAfter).toBe("2026-06-17T00:00:00.000Z");
   });
 
   it("calling start() twice does not double-poll", async () => {

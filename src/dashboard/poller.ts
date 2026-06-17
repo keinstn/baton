@@ -5,6 +5,7 @@ import {
   type DashboardConfig,
   type DashboardTarget,
 } from "./config.js";
+import { normalizeRetryingEntry, normalizeRunningEntry } from "./normalize.js";
 
 const SCRAPE_TIMEOUT_MS = 10_000;
 
@@ -122,12 +123,14 @@ export function createPoller(deps: PollerDeps): Poller {
   let runId = 0;
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
-  async function pollAll(): Promise<void> {
+  async function pollAll(myRunId: number): Promise<void> {
     await Promise.all(
       deps.config.targets.map(async (target) => {
         try {
           const state = await scrape(target, fetchFn);
-          cache.set(target.name, state);
+          if (started && myRunId === runId) {
+            cache.set(target.name, state);
+          }
         } catch {
           // scrape() is already fully try/caught; this is a safety net
         }
@@ -136,7 +139,7 @@ export function createPoller(deps: PollerDeps): Poller {
   }
 
   async function loop(myRunId: number): Promise<void> {
-    await pollAll();
+    await pollAll(myRunId);
     if (!started || myRunId !== runId) return;
     timeoutId = setTimeout(
       () => void loop(myRunId),
@@ -160,8 +163,12 @@ export function createPoller(deps: PollerDeps): Poller {
       for (const state of cache.values()) {
         if (!state.up || !state.snapshot) continue;
         const snap = state.snapshot as OrchestratorSnapshot;
-        running += snap.running.length;
-        retrying += snap.retrying.length;
+        running += (snap.running as unknown[]).filter(
+          (e) => normalizeRunningEntry(e) !== null,
+        ).length;
+        retrying += (snap.retrying as unknown[]).filter(
+          (e) => normalizeRetryingEntry(e) !== null,
+        ).length;
         input_tokens += snap.agent_totals.input_tokens;
         output_tokens += snap.agent_totals.output_tokens;
         total_tokens += snap.agent_totals.total_tokens;
