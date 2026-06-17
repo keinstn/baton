@@ -4,19 +4,49 @@ import {
   renderRetryingTable,
   renderRunningTable,
 } from "../observability/dashboard.js";
-import type { OrchestratorSnapshot } from "../orchestrator/orchestrator.js";
+import type {
+  SnapshotRetrying,
+  SnapshotRunning,
+} from "../orchestrator/orchestrator.js";
 import type { BoardState } from "./config.js";
 import type { AggregatedTotals } from "./poller.js";
 
-function isValidSnapshot(v: unknown): v is OrchestratorSnapshot {
+function isValidRunningEntry(v: unknown): v is SnapshotRunning {
   if (typeof v !== "object" || v === null) return false;
+  const r = v as Record<string, unknown>;
+  return (
+    typeof r.identifier === "string" &&
+    typeof r.title === "string" &&
+    typeof r.started_at === "string"
+  );
+}
+
+function isValidRetryingEntry(v: unknown): v is SnapshotRetrying {
+  if (typeof v !== "object" || v === null) return false;
+  const r = v as Record<string, unknown>;
+  return (
+    typeof r.identifier === "string" &&
+    typeof r.title === "string" &&
+    typeof r.scheduled_at === "string" &&
+    typeof r.fires_at === "string"
+  );
+}
+
+function parseSnapshot(
+  v: unknown,
+): { running: SnapshotRunning[]; retrying: SnapshotRetrying[] } | null {
+  if (typeof v !== "object" || v === null) return null;
   const s = v as Record<string, unknown>;
-  return Array.isArray(s.running) && Array.isArray(s.retrying);
+  if (!Array.isArray(s.running) || !Array.isArray(s.retrying)) return null;
+  return {
+    running: (s.running as unknown[]).filter(isValidRunningEntry),
+    retrying: (s.retrying as unknown[]).filter(isValidRetryingEntry),
+  };
 }
 
 function renderBoardSection(board: BoardState): string {
-  const raw = board.up && board.snapshot ? board.snapshot : null;
-  const snap = raw !== null && isValidSnapshot(raw) ? raw : null;
+  const snap =
+    board.up && board.snapshot ? parseSnapshot(board.snapshot) : null;
   const upBadge = board.up
     ? `<span class="badge badge-up">UP</span>`
     : `<span class="badge badge-down">DOWN</span>`;
@@ -26,8 +56,8 @@ function renderBoardSection(board: BoardState): string {
   const errorInfo = board.error
     ? `<p class="error-msg">${escapeHtml(board.error)}</p>`
     : "";
-  const running = snap ? snap.running : [];
-  const retrying = snap ? snap.retrying : [];
+  const running: SnapshotRunning[] = snap ? snap.running : [];
+  const retrying: SnapshotRetrying[] = snap ? snap.retrying : [];
 
   return `<section class="board-section">
   <div class="section-header">

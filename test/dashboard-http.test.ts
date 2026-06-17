@@ -232,6 +232,25 @@ describe("startDashboardServer — GET /", () => {
     }
   });
 
+  it("filters out invalid running entries so GET / does not crash when snapshot contains null elements", async () => {
+    const boards = [
+      makeBoard({
+        name: "partial",
+        snapshot: { running: [null, { not_identifier: true }], retrying: [] },
+      }),
+    ];
+    const srv = await startTestServer({ boards });
+    try {
+      const res = await fetch(`${srv.baseUrl}/`);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("partial");
+      expect(html).toContain("none");
+    } finally {
+      await srv.close();
+    }
+  });
+
   it("HEAD / returns 200 with Content-Length matching GET and no body", async () => {
     const srv = await startTestServer();
     try {
@@ -491,7 +510,7 @@ describe("startDashboardServer — POST /api/v1/boards/<name>/refresh", () => {
     }
   });
 
-  it("uses new URL() so a trailing slash on board.url does not double the slash", async () => {
+  it("trailing slash on board.url does not produce a double slash in the proxied URL", async () => {
     const mockFetch = vi.fn(
       async () =>
         new Response(JSON.stringify({ accepted: true }), {
@@ -512,6 +531,32 @@ describe("startDashboardServer — POST /api/v1/boards/<name>/refresh", () => {
         string,
       ];
       expect(url).toBe("http://localhost:8001/api/v1/refresh");
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it("preserves base path in board.url when constructing the proxied refresh URL", async () => {
+    const mockFetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ accepted: true }), {
+          status: 202,
+          headers: { "content-type": "application/json" },
+        }),
+    ) as unknown as typeof globalThis.fetch;
+
+    const srv = await startTestServer({
+      boards: [makeBoard({ url: "http://localhost:8001/prefix" })],
+      fetch: mockFetch,
+    });
+    try {
+      await fetch(`${srv.baseUrl}/api/v1/boards/alpha/refresh`, {
+        method: "POST",
+      });
+      const [url] = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
+        string,
+      ];
+      expect(url).toBe("http://localhost:8001/prefix/api/v1/refresh");
     } finally {
       await srv.close();
     }
