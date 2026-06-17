@@ -283,6 +283,8 @@ Baton uses [Changesets](https://github.com/changesets/changesets) to manage vers
 4. Merge the version PR into `main`.
 5. The same release workflow sees the version bump commit, creates `vX.Y.Z`, and publishes a
    GitHub Release with generated notes.
+6. Merge `main` back into `develop` so the consumed `.changeset/*.md` files and the released
+   package version stay in sync on the development branch before the next cycle starts.
 
 **Bump guidelines**
 
