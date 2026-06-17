@@ -56,11 +56,10 @@ npm install
 npm run build
 ```
 
-Run the local CLI binaries with `npm exec` after building:
+Run Baton with `npm exec` after building:
 
 ```sh
 npm exec baton -- WORKFLOW.md
-npm exec baton-dashboard -- baton-dashboard.yaml --port 8080
 ```
 
 ## Board Setup
