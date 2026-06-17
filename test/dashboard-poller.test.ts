@@ -174,6 +174,28 @@ describe("createPoller — up/down after scrape", () => {
     expect(boards[0]?.error).toMatch(/invalid JSON/);
   });
 
+  it("marks board down when agent_totals is missing from snapshot", async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({
+        generated_at: "2026-06-17T00:00:00.000Z",
+        running: [],
+        retrying: [],
+        // agent_totals intentionally absent
+      }),
+    ) as unknown as typeof globalThis.fetch;
+    const poller = createPoller({
+      config: makeConfig([{ name: "alpha", url: "http://localhost:8001" }]),
+      fetch: fetchMock,
+    });
+    poller.start();
+    await new Promise((r) => setTimeout(r, 20));
+    poller.stop();
+
+    const boards = poller.boards();
+    expect(boards[0]?.up).toBe(false);
+    expect(boards[0]?.error).toMatch(/invalid JSON/);
+  });
+
   it("marks board down when response body is not JSON at all", async () => {
     const fetchMock = vi.fn(
       async () =>

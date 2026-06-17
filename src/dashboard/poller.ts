@@ -87,10 +87,20 @@ async function scrape(
 function isSnapshot(v: unknown): v is OrchestratorSnapshot {
   if (typeof v !== "object" || v === null) return false;
   const s = v as Record<string, unknown>;
+  if (
+    typeof s.generated_at !== "string" ||
+    !Array.isArray(s.running) ||
+    !Array.isArray(s.retrying)
+  )
+    return false;
+  const t = s.agent_totals;
+  if (typeof t !== "object" || t === null) return false;
+  const totals = t as Record<string, unknown>;
   return (
-    typeof s.generated_at === "string" &&
-    Array.isArray(s.running) &&
-    Array.isArray(s.retrying)
+    typeof totals.input_tokens === "number" &&
+    typeof totals.output_tokens === "number" &&
+    typeof totals.total_tokens === "number" &&
+    typeof totals.seconds_running === "number"
   );
 }
 
@@ -103,7 +113,8 @@ export function createPoller(deps: PollerDeps): Poller {
     ]),
   );
 
-  let intervalId: ReturnType<typeof setInterval> | null = null;
+  let started = false;
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
   async function pollAll(): Promise<void> {
     await Promise.all(
@@ -116,6 +127,13 @@ export function createPoller(deps: PollerDeps): Poller {
         }
       }),
     );
+  }
+
+  async function loop(): Promise<void> {
+    await pollAll();
+    if (started) {
+      timeoutId = setTimeout(() => void loop(), deps.config.pollIntervalMs);
+    }
   }
 
   return {
@@ -153,17 +171,16 @@ export function createPoller(deps: PollerDeps): Poller {
     },
 
     start(): void {
-      if (intervalId !== null) return;
-      void pollAll();
-      intervalId = setInterval(() => {
-        void pollAll();
-      }, deps.config.pollIntervalMs);
+      if (started) return;
+      started = true;
+      void loop();
     },
 
     stop(): void {
-      if (intervalId !== null) {
-        clearInterval(intervalId);
-        intervalId = null;
+      started = false;
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
       }
     },
   };
