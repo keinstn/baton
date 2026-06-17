@@ -5,6 +5,7 @@ import { parseDashboardArgs } from "./cli-args.js";
 import { loadDashboardConfig } from "./config.js";
 import { startDashboardServer } from "./http.js";
 import { createPoller } from "./poller.js";
+import { makeShutdown } from "./shutdown.js";
 
 async function main(): Promise<void> {
   const logger = new Logger({ service: "baton-dashboard" });
@@ -31,25 +32,12 @@ async function main(): Promise<void> {
     targets: config.targets.length,
   });
 
-  const SHUTDOWN_TIMEOUT_MS = 10_000;
-  let shuttingDown = false;
-  const shutdown = (signal: string) => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    logger.info("shutting down", { signal });
-    poller.stop();
-    void Promise.race([
-      server.close().catch((err) => {
-        logger.warn("dashboard close failed", {
-          signal,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }),
-      new Promise<void>((resolve) => setTimeout(resolve, SHUTDOWN_TIMEOUT_MS)),
-    ]).then(() => {
-      process.exit(0);
-    });
-  };
+  const shutdown = makeShutdown({
+    stopPoller: () => poller.stop(),
+    closeServer: () => server.close(),
+    exit: (code) => process.exit(code),
+    logger,
+  });
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));
 }
