@@ -256,10 +256,44 @@ describe("createPoller — isolation (one target failure does not affect others)
   });
 });
 
+function makeRunningEntry(id: string) {
+  return {
+    identifier: id,
+    issue_id: "",
+    issue_url: null,
+    title: `Issue ${id}`,
+    state: null,
+    turn_count: 0,
+    session_id: null,
+    started_at: "2026-06-17T00:00:00.000Z",
+    last_event: null,
+    last_event_at: null,
+    input_tokens: 0,
+    output_tokens: 0,
+    total_tokens: 0,
+    retry_attempt: null,
+    failure_attempt: 0,
+  };
+}
+
+function makeRetryingEntry(id: string) {
+  return {
+    identifier: id,
+    issue_id: "",
+    issue_url: null,
+    title: `Issue ${id}`,
+    attempt: 0,
+    prompt_attempt: null,
+    scheduled_at: "2026-06-17T00:00:00.000Z",
+    fires_at: "2026-06-17T00:01:00.000Z",
+    delay_ms: 0,
+  };
+}
+
 describe("createPoller — totals() aggregation", () => {
   it("sums agent_totals across all up boards", async () => {
     const snap1 = makeSnapshot({
-      running: [{ identifier: "r1" } as never],
+      running: [makeRunningEntry("r1")],
       retrying: [],
       agent_totals: {
         input_tokens: 100,
@@ -270,7 +304,7 @@ describe("createPoller — totals() aggregation", () => {
     });
     const snap2 = makeSnapshot({
       running: [],
-      retrying: [{ identifier: "r2" } as never],
+      retrying: [makeRetryingEntry("r2")],
       agent_totals: {
         input_tokens: 200,
         output_tokens: 100,
@@ -300,6 +334,36 @@ describe("createPoller — totals() aggregation", () => {
     expect(t.output_tokens).toBe(150);
     expect(t.total_tokens).toBe(450);
     expect(t.seconds_running).toBe(30);
+    expect(t.running).toBe(1);
+    expect(t.retrying).toBe(1);
+  });
+
+  it("totals() only counts valid (normalizable) entries, matching what render displays", async () => {
+    // One valid running entry + one malformed (missing title/started_at) → count = 1
+    const snap = makeSnapshot({
+      running: [
+        makeRunningEntry("valid-1"),
+        { identifier: "bad-no-title" } as never,
+        { identifier: "bad-no-started-at", title: "oops" } as never,
+      ],
+      retrying: [
+        makeRetryingEntry("valid-r1"),
+        { identifier: "bad-retrying" } as never,
+      ],
+    });
+    const fetchMock = vi.fn(async () =>
+      Response.json(snap),
+    ) as unknown as typeof globalThis.fetch;
+
+    const poller = createPoller({
+      config: makeConfig([{ name: "alpha", url: "http://localhost:8001" }]),
+      fetch: fetchMock,
+    });
+    poller.start();
+    await new Promise((r) => setTimeout(r, 20));
+    poller.stop();
+
+    const t = poller.totals();
     expect(t.running).toBe(1);
     expect(t.retrying).toBe(1);
   });
@@ -369,6 +433,100 @@ describe("createPoller — start/stop", () => {
     );
   });
 
+  it("stop/start cycle does not cause a double-poll loop", async () => {
+    // If stop() is called while an in-flight pollAll() is pending and then
+    // start() is re-called, the stale loop must not schedule a second timer
+    // after it completes (runId mismatch prevents this).
+    let resolvePoll!: () => void;
+    let pollCount = 0;
+    const fetchMock = vi.fn(async () => {
+      pollCount++;
+      if (pollCount === 1) {
+        // First poll hangs until we release it
+        await new Promise<void>((r) => {
+          resolvePoll = r;
+        });
+      }
+      return Response.json(makeSnapshot());
+    }) as unknown as typeof globalThis.fetch;
+
+    const poller = createPoller({
+      config: makeConfig([{ name: "alpha", url: "http://localhost:8001" }], 50),
+      fetch: fetchMock,
+    });
+
+    poller.start(); // starts loop #1 (poll hangs)
+    await new Promise((r) => setTimeout(r, 5)); // let loop #1 enter pollAll
+    poller.stop(); // increments runId; loop #1 is still in-flight
+    poller.start(); // starts loop #2 (poll resolves immediately)
+    await new Promise((r) => setTimeout(r, 20)); // let loop #2 settle
+
+    const callsAfterSecondStart = (fetchMock as ReturnType<typeof vi.fn>).mock
+      .calls.length;
+    resolvePoll(); // unblock the stale loop #1
+    await new Promise((r) => setTimeout(r, 80)); // wait past poll interval
+
+    poller.stop();
+    // Loop #1 completing after stop/start must NOT schedule an extra timer.
+    // Only loop #2's immediate poll + any interval polls should have run.
+    expect(
+      (fetchMock as ReturnType<typeof vi.fn>).mock.calls.length,
+    ).toBeLessThanOrEqual(callsAfterSecondStart + 2);
+  });
+
+  it("stale in-flight poll does not overwrite cache written by the new run", async () => {
+    // Scenario: stop() called while poll #1 is in-flight, start() re-called.
+    // Poll #1 (stale) must not clobber the fresh state written by poll #2.
+    const staleSnap = makeSnapshot({
+      generated_at: "2026-06-01T00:00:00.000Z",
+    });
+    const freshSnap = makeSnapshot({
+      generated_at: "2026-06-17T00:00:00.000Z",
+    });
+    let resolveStale!: () => void;
+    let callCount = 0;
+
+    const fetchMock = vi.fn(async () => {
+      callCount++;
+      if (callCount === 1) {
+        // First call hangs until released (simulates stale in-flight)
+        await new Promise<void>((r) => {
+          resolveStale = r;
+        });
+        return Response.json(staleSnap);
+      }
+      return Response.json(freshSnap);
+    }) as unknown as typeof globalThis.fetch;
+
+    const poller = createPoller({
+      config: makeConfig([{ name: "alpha", url: "http://localhost:8001" }]),
+      fetch: fetchMock,
+    });
+
+    poller.start(); // poll #1 hangs (stale)
+    await new Promise((r) => setTimeout(r, 5)); // let poll #1 enter fetch
+    poller.stop();
+    poller.start(); // poll #2 completes with freshSnap
+    await new Promise((r) => setTimeout(r, 20)); // poll #2 resolves
+
+    // Cache now holds freshSnap from poll #2
+    const snapBefore = (
+      poller.boards()[0]?.snapshot as { generated_at: string } | undefined
+    )?.generated_at;
+
+    resolveStale(); // unblock stale poll #1
+    await new Promise((r) => setTimeout(r, 20)); // let it try to write
+
+    poller.stop();
+    const snapAfter = (
+      poller.boards()[0]?.snapshot as { generated_at: string } | undefined
+    )?.generated_at;
+
+    // Stale poll #1's result must NOT have overwritten freshSnap
+    expect(snapBefore).toBe("2026-06-17T00:00:00.000Z");
+    expect(snapAfter).toBe("2026-06-17T00:00:00.000Z");
+  });
+
   it("calling start() twice does not double-poll", async () => {
     const fetchMock = okFetch(makeSnapshot());
     const poller = createPoller({
@@ -384,5 +542,56 @@ describe("createPoller — start/stop", () => {
     poller.stop();
     // Only 1 immediate poll should have fired (not 2)
     expect((fetchMock as ReturnType<typeof vi.fn>).mock.calls.length).toBe(1);
+  });
+});
+
+describe("createPoller — scrape URL construction", () => {
+  it("preserves a base path in the target URL when requesting /api/v1/state", async () => {
+    const fetchMock = okFetch(makeSnapshot());
+    const poller = createPoller({
+      config: makeConfig([
+        { name: "alpha", url: "http://localhost:8001/prefix" },
+      ]),
+      fetch: fetchMock,
+    });
+    poller.start();
+    await new Promise((r) => setTimeout(r, 20));
+    poller.stop();
+    const [url] = (fetchMock as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+    ];
+    expect(url).toBe("http://localhost:8001/prefix/api/v1/state");
+  });
+
+  it("does not corrupt the state URL when the target URL has a query string", async () => {
+    const fetchMock = okFetch(makeSnapshot());
+    const poller = createPoller({
+      config: makeConfig([
+        { name: "alpha", url: "http://localhost:8001/prefix?token=abc" },
+      ]),
+      fetch: fetchMock,
+    });
+    poller.start();
+    await new Promise((r) => setTimeout(r, 20));
+    poller.stop();
+    const [url] = (fetchMock as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+    ];
+    expect(url).toBe("http://localhost:8001/prefix/api/v1/state?token=abc");
+  });
+
+  it("does not produce a double slash when the target URL has a trailing slash", async () => {
+    const fetchMock = okFetch(makeSnapshot());
+    const poller = createPoller({
+      config: makeConfig([{ name: "alpha", url: "http://localhost:8001/" }]),
+      fetch: fetchMock,
+    });
+    poller.start();
+    await new Promise((r) => setTimeout(r, 20));
+    poller.stop();
+    const [url] = (fetchMock as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+    ];
+    expect(url).toBe("http://localhost:8001/api/v1/state");
   });
 });

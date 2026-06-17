@@ -121,6 +121,24 @@ export function buildDashboardConfig(raw: unknown): DashboardConfig {
   return { server, pollIntervalMs, targets };
 }
 
+/** Appends an API suffix to a board base URL, preserving path, query, and hash. */
+export function buildBoardApiUrl(base: string, suffix: string): string {
+  const u = new URL(base);
+  u.pathname = `${u.pathname.replace(/\/$/, "")}${suffix}`;
+  u.hash = "";
+  return u.toString();
+}
+
+/** Strips credentials, query string, and fragment from a URL for safe display/API output. */
+export function redactBoardUrl(raw: string): string {
+  const u = new URL(raw);
+  u.username = "";
+  u.password = "";
+  u.search = "";
+  u.hash = "";
+  return u.toString();
+}
+
 export async function loadDashboardConfig(
   filePath: string,
 ): Promise<DashboardConfig> {
