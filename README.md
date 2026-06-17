@@ -56,10 +56,11 @@ npm install
 npm run build
 ```
 
-To use `baton` as a global command, link it after building:
+Run the local CLI binaries with `npm exec` after building:
 
 ```sh
-npm link
+npm exec baton -- WORKFLOW.md
+npm exec baton-dashboard -- baton-dashboard.yaml --port 8080
 ```
 
 ## Board Setup
@@ -149,7 +150,7 @@ export LOG_LEVEL=info         # Log verbosity: debug | info | warn | error (defa
 **3. Run Baton**
 
 ```sh
-baton WORKFLOW.md
+npm exec baton -- WORKFLOW.md
 ```
 
 `WORKFLOW.md` defaults to `./WORKFLOW.md` when omitted.
@@ -237,7 +238,7 @@ aggregated dashboard process.
 # Copy and edit the sample config
 cp examples/baton-dashboard.yaml ./baton-dashboard.yaml
 # Edit targets to point at your running baton instances, then:
-baton-dashboard baton-dashboard.yaml --port 8080
+npm exec baton-dashboard -- baton-dashboard.yaml --port 8080
 ```
 
 The dashboard is read-only: it does not manage `baton` process lifecycle. Use your OS process
