@@ -231,6 +231,13 @@ GitHub Projects boards at once.
 Use [`examples/baton-dashboard.yaml`](examples/baton-dashboard.yaml) as a starter config for the
 aggregated dashboard process.
 
+```mermaid
+flowchart LR
+    A["baton\nboard A :8787"] --> D["baton-dashboard\n:8080"]
+    B["baton\nboard B :8788"] --> D
+    C["baton\nboard C :8789"] --> D
+```
+
 **Quick start**
 
 ```sh
