@@ -669,3 +669,75 @@ describe("startDashboardServer — error envelope and routing", () => {
     }
   });
 });
+
+describe("startDashboardServer — URL redaction", () => {
+  it("GET / strips query string from board URL in HTML", async () => {
+    const srv = await startTestServer({
+      boards: [makeBoard({ url: "http://localhost:8001/?token=secret" })],
+    });
+    try {
+      const res = await fetch(`${srv.baseUrl}/`);
+      const html = await res.text();
+      expect(html).not.toContain("token=secret");
+      expect(html).toContain("http://localhost:8001/");
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it("GET /api/v1/boards strips query string from url in JSON response", async () => {
+    const srv = await startTestServer({
+      boards: [makeBoard({ url: "http://localhost:8001/prefix?token=secret" })],
+    });
+    try {
+      const res = await fetch(`${srv.baseUrl}/api/v1/boards`);
+      const body = (await res.json()) as Array<{ url: string }>;
+      expect(body[0]?.url).toBe("http://localhost:8001/prefix");
+      expect(body[0]?.url).not.toContain("token=secret");
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it("GET /api/v1/boards/<name>/state strips query string from url in JSON response", async () => {
+    const srv = await startTestServer({
+      boards: [makeBoard({ url: "http://localhost:8001/prefix?token=secret" })],
+    });
+    try {
+      const res = await fetch(`${srv.baseUrl}/api/v1/boards/alpha/state`);
+      const body = (await res.json()) as { url: string };
+      expect(body.url).toBe("http://localhost:8001/prefix");
+      expect(body.url).not.toContain("token=secret");
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it("POST .../refresh still proxies to the full URL with query string", async () => {
+    const mockFetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ accepted: true }), {
+          status: 202,
+          headers: { "content-type": "application/json" },
+        }),
+    ) as unknown as typeof globalThis.fetch;
+
+    const srv = await startTestServer({
+      boards: [makeBoard({ url: "http://localhost:8001/prefix?token=secret" })],
+      fetch: mockFetch,
+    });
+    try {
+      await fetch(`${srv.baseUrl}/api/v1/boards/alpha/refresh`, {
+        method: "POST",
+      });
+      const [url] = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
+        string,
+      ];
+      expect(url).toBe(
+        "http://localhost:8001/prefix/api/v1/refresh?token=secret",
+      );
+    } finally {
+      await srv.close();
+    }
+  });
+});

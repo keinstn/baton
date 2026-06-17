@@ -12,7 +12,7 @@ import {
   sendMethodNotAllowed,
 } from "../observability/http-util.js";
 import type { Logger } from "../observability/logger.js";
-import { type BoardState, buildBoardApiUrl } from "./config.js";
+import { type BoardState, buildBoardApiUrl, redactBoardUrl } from "./config.js";
 import type { AggregatedTotals } from "./poller.js";
 import { renderMultiBoardDashboard } from "./render.js";
 
@@ -71,6 +71,10 @@ function closeServer(server: Server): Promise<void> {
   });
 }
 
+function toPublicBoardState(board: BoardState): BoardState {
+  return { ...board, url: redactBoardUrl(board.url) };
+}
+
 interface RouteContext {
   res: ServerResponse;
   deps: DashboardHttpDeps;
@@ -96,7 +100,12 @@ const routes: Route[] = [
     match: exact("/api/v1/boards"),
     methods: ["GET", "HEAD"],
     handle: ({ res, deps, method }) =>
-      sendJson(res, 200, deps.boards(), method === "HEAD"),
+      sendJson(
+        res,
+        200,
+        deps.boards().map(toPublicBoardState),
+        method === "HEAD",
+      ),
   },
   {
     match: pattern(/^\/api\/v1\/boards\/([^/]+)\/state$/),
@@ -174,7 +183,7 @@ function handleBoardState(
     sendError(res, 404, "not_found", `no board named ${name}`);
     return;
   }
-  sendJson(res, 200, board, headOnly);
+  sendJson(res, 200, toPublicBoardState(board), headOnly);
 }
 
 async function handleBoardRefresh(

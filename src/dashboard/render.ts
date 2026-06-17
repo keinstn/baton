@@ -8,7 +8,7 @@ import type {
   SnapshotRetrying,
   SnapshotRunning,
 } from "../orchestrator/orchestrator.js";
-import type { BoardState } from "./config.js";
+import { type BoardState, redactBoardUrl } from "./config.js";
 import type { AggregatedTotals } from "./poller.js";
 
 function asString(v: unknown, fallback = ""): string {
@@ -92,12 +92,13 @@ function renderBoardSection(board: BoardState): string {
     : "";
   const running: SnapshotRunning[] = snap ? snap.running : [];
   const retrying: SnapshotRetrying[] = snap ? snap.retrying : [];
+  const displayUrl = escapeHtml(redactBoardUrl(board.url));
 
   return `<section class="board-section">
   <div class="section-header">
     <h2>${escapeHtml(board.name)}</h2>
     ${upBadge}
-    <span class="board-url"><a href="${escapeHtml(board.url)}">${escapeHtml(board.url)}</a></span>
+    <span class="board-url"><a href="${displayUrl}">${displayUrl}</a></span>
     <span class="last-scraped">last scraped: ${lastScraped}</span>
   </div>
   ${errorInfo}

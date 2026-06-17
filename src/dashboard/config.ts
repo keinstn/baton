@@ -129,6 +129,16 @@ export function buildBoardApiUrl(base: string, suffix: string): string {
   return u.toString();
 }
 
+/** Strips credentials, query string, and fragment from a URL for safe display/API output. */
+export function redactBoardUrl(raw: string): string {
+  const u = new URL(raw);
+  u.username = "";
+  u.password = "";
+  u.search = "";
+  u.hash = "";
+  return u.toString();
+}
+
 export async function loadDashboardConfig(
   filePath: string,
 ): Promise<DashboardConfig> {
