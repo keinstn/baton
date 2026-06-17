@@ -5,7 +5,7 @@ import type {
 } from "../orchestrator/orchestrator.js";
 
 /** Escape text for safe interpolation into HTML (XSS prevention, SPEC §13.7). */
-function escapeHtml(s: string): string {
+export function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -15,7 +15,7 @@ function escapeHtml(s: string): string {
 }
 
 /** Only http(s) URLs become links; blocks javascript:/data: hrefs. */
-function isSafeHttpUrl(u: string | null): boolean {
+export function isSafeHttpUrl(u: string | null): boolean {
   if (!u) return false;
   try {
     const parsed = new URL(u);
@@ -26,13 +26,13 @@ function isSafeHttpUrl(u: string | null): boolean {
 }
 
 /** Issue cell: a link when the url is a safe http(s) URL, otherwise plain text. */
-function issueCell(identifier: string, url: string | null): string {
+export function issueCell(identifier: string, url: string | null): string {
   return isSafeHttpUrl(url)
     ? `<a href="${escapeHtml(url as string)}">${escapeHtml(identifier)}</a>`
     : escapeHtml(identifier);
 }
 
-function renderRunningTable(rows: SnapshotRunning[]): string {
+export function renderRunningTable(rows: SnapshotRunning[]): string {
   if (rows.length === 0) return `<p class="empty">none</p>`;
   const body = rows
     .map(
@@ -56,7 +56,7 @@ function renderRunningTable(rows: SnapshotRunning[]): string {
 <tbody>${body}</tbody></table>`;
 }
 
-function renderRetryingTable(rows: SnapshotRetrying[]): string {
+export function renderRetryingTable(rows: SnapshotRetrying[]): string {
   if (rows.length === 0) return `<p class="empty">none</p>`;
   const body = rows
     .map(
@@ -78,16 +78,7 @@ function renderRetryingTable(rows: SnapshotRetrying[]): string {
 <tbody>${body}</tbody></table>`;
 }
 
-/** Render the self-refreshing status dashboard HTML for `GET /` (SPEC §13.7). */
-export function renderDashboard(snap: OrchestratorSnapshot): string {
-  const totals = snap.agent_totals;
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta http-equiv="refresh" content="5">
-<title>Baton — orchestrator status</title>
-<style>
+export const DASHBOARD_CSS = `
   :root {
     --bg: #0d0d0d; --bg-surface: #111111; --bg-header: #002233;
     --bg-row-alt: #0a1520; --border: #1e1e1e;
@@ -131,7 +122,18 @@ export function renderDashboard(snap: OrchestratorSnapshot): string {
   a:hover { text-decoration: underline; }
   code { color: var(--code); font-size: 0.9em; }
   .empty { color: var(--text-muted); font-style: italic; padding: 0.5rem 0; }
-</style>
+`;
+
+/** Render the self-refreshing status dashboard HTML for `GET /` (SPEC §13.7). */
+export function renderDashboard(snap: OrchestratorSnapshot): string {
+  const totals = snap.agent_totals;
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="refresh" content="5">
+<title>Baton — orchestrator status</title>
+<style>${DASHBOARD_CSS}</style>
 </head>
 <body>
 <header>
