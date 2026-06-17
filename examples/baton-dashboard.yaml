@@ -1,0 +1,36 @@
+# baton-dashboard configuration
+#
+# Run: baton-dashboard baton-dashboard.yaml [--port N]
+# Docs: docs/SPEC.md Appendix C
+#
+# baton-dashboard aggregates the HTTP state APIs of one or more running baton
+# instances into a single dashboard. Each baton instance must have `server.port`
+# set in its WORKFLOW.md front matter (SPEC §13.7).
+
+server:
+  # Loopback bind by default. Change to 0.0.0.0 to expose on all interfaces.
+  host: 127.0.0.1
+  # Port for the aggregated dashboard. CLI --port overrides this value.
+  port: 8080
+
+# How often baton-dashboard polls each target's /api/v1/state (milliseconds).
+poll_interval_ms: 5000
+
+# List of baton instances to aggregate. Each entry points at the base URL of
+# one baton HTTP server. Names must be unique; they appear in the dashboard UI
+# and in the /api/v1/boards/<name>/state API path.
+#
+# Multi-instance operation notes (SPEC Appendix C):
+#   - Each baton instance MUST use a distinct server.port.
+#   - When the same repo appears in multiple Projects, give each instance its
+#     own workspace.root to avoid workspace path collisions.
+#   - The GitHub GraphQL rate budget (5 000 points/hour) is shared per token;
+#     use distinct tokens or stagger poll intervals to avoid contention.
+targets:
+  - name: my-org-main
+    url: http://127.0.0.1:8787
+  - name: my-org-backlog
+    url: http://127.0.0.1:8788
+  # Add more baton instances here:
+  # - name: another-board
+  #   url: http://127.0.0.1:8789
