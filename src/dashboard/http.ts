@@ -12,7 +12,7 @@ import {
   sendMethodNotAllowed,
 } from "../observability/http-util.js";
 import type { Logger } from "../observability/logger.js";
-import type { BoardState } from "./config.js";
+import { type BoardState, buildBoardApiUrl } from "./config.js";
 import type { AggregatedTotals } from "./poller.js";
 import { renderMultiBoardDashboard } from "./render.js";
 
@@ -195,9 +195,7 @@ async function handleBoardRefresh(
     return;
   }
   const fetchFn = deps.fetch ?? globalThis.fetch;
-  const u = new URL(board.url);
-  u.pathname = `${u.pathname.replace(/\/$/, "")}/api/v1/refresh`;
-  const refreshUrl = u.href;
+  const refreshUrl = buildBoardApiUrl(board.url, "/api/v1/refresh");
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), 10_000);
   try {

@@ -1,5 +1,10 @@
 import type { OrchestratorSnapshot } from "../orchestrator/orchestrator.js";
-import type { BoardState, DashboardConfig, DashboardTarget } from "./config.js";
+import {
+  type BoardState,
+  buildBoardApiUrl,
+  type DashboardConfig,
+  type DashboardTarget,
+} from "./config.js";
 
 const SCRAPE_TIMEOUT_MS = 10_000;
 
@@ -31,7 +36,7 @@ async function scrape(
   target: DashboardTarget,
   fetchFn: typeof globalThis.fetch,
 ): Promise<BoardState> {
-  const url = `${target.url}/api/v1/state`;
+  const url = buildBoardApiUrl(target.url, "/api/v1/state");
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), SCRAPE_TIMEOUT_MS);
   let raw: unknown;

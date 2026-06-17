@@ -386,3 +386,54 @@ describe("createPoller — start/stop", () => {
     expect((fetchMock as ReturnType<typeof vi.fn>).mock.calls.length).toBe(1);
   });
 });
+
+describe("createPoller — scrape URL construction", () => {
+  it("preserves a base path in the target URL when requesting /api/v1/state", async () => {
+    const fetchMock = okFetch(makeSnapshot());
+    const poller = createPoller({
+      config: makeConfig([
+        { name: "alpha", url: "http://localhost:8001/prefix" },
+      ]),
+      fetch: fetchMock,
+    });
+    poller.start();
+    await new Promise((r) => setTimeout(r, 20));
+    poller.stop();
+    const [url] = (fetchMock as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+    ];
+    expect(url).toBe("http://localhost:8001/prefix/api/v1/state");
+  });
+
+  it("does not corrupt the state URL when the target URL has a query string", async () => {
+    const fetchMock = okFetch(makeSnapshot());
+    const poller = createPoller({
+      config: makeConfig([
+        { name: "alpha", url: "http://localhost:8001/prefix?token=abc" },
+      ]),
+      fetch: fetchMock,
+    });
+    poller.start();
+    await new Promise((r) => setTimeout(r, 20));
+    poller.stop();
+    const [url] = (fetchMock as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+    ];
+    expect(url).toBe("http://localhost:8001/prefix/api/v1/state?token=abc");
+  });
+
+  it("does not produce a double slash when the target URL has a trailing slash", async () => {
+    const fetchMock = okFetch(makeSnapshot());
+    const poller = createPoller({
+      config: makeConfig([{ name: "alpha", url: "http://localhost:8001/" }]),
+      fetch: fetchMock,
+    });
+    poller.start();
+    await new Promise((r) => setTimeout(r, 20));
+    poller.stop();
+    const [url] = (fetchMock as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+    ];
+    expect(url).toBe("http://localhost:8001/api/v1/state");
+  });
+});
