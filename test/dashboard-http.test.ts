@@ -251,6 +251,37 @@ describe("startDashboardServer — GET /", () => {
     }
   });
 
+  it("normalizes running entries with non-string state/session_id/last_event so GET / does not crash", async () => {
+    const boards = [
+      makeBoard({
+        name: "badfields",
+        snapshot: {
+          running: [
+            {
+              identifier: "repo-bad",
+              title: "Bad fields",
+              started_at: "2026-06-17T00:00:00.000Z",
+              state: { bad: true },
+              session_id: { also: "bad" },
+              last_event: [1, 2, 3],
+            },
+          ],
+          retrying: [],
+        },
+      }),
+    ];
+    const srv = await startTestServer({ boards });
+    try {
+      const res = await fetch(`${srv.baseUrl}/`);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("badfields");
+      expect(html).toContain("repo-bad");
+    } finally {
+      await srv.close();
+    }
+  });
+
   it("HEAD / returns 200 with Content-Length matching GET and no body", async () => {
     const srv = await startTestServer();
     try {
