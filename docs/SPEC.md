@@ -1010,9 +1010,10 @@ All routes are observability/control-only (no orchestration logic):
 Unknown paths return `404`; unsupported methods return `405`; errors use the same JSON
 envelope as the per-instance API.
 
-`BoardState` object fields: `name`, `url` (credentials stripped), `up` (boolean), `lastScrapedAt`,
-`error` (string, present when `up` is false), `snapshot` (the last successful `/api/v1/state`
-payload, or null).
+`BoardState` object fields: `name`, `url` (credentials stripped), `up` (boolean),
+`lastScrapedAt` (`Date` or `null` before the first scrape), `error` (string, optional — present
+when `up` is false after a failed scrape), `snapshot` (object, optional — present when `up` is
+true; cleared on failure).
 
 ### Multi-instance operation guide
 
@@ -1070,5 +1071,6 @@ fields to detect budget contention early.
 `baton-dashboard` does not manage the lifecycle of the `baton` processes it aggregates. Use
 the host OS process manager (systemd, launchd, pm2, Docker, etc.) to supervise each `baton`
 instance and `baton-dashboard` independently. If a `baton` instance is down, `baton-dashboard`
-marks its board as `up: false` and retains the last known snapshot; the other boards are
+marks its board as `up: false` and clears its cached snapshot (each failed scrape replaces
+the previous result — the snapshot is not retained across failures). The other boards are
 unaffected.
