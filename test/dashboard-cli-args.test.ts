@@ -41,6 +41,10 @@ describe("parseDashboardArgs", () => {
     expect(() => parseDashboardArgs(["--port"])).toThrow(/requires an integer/);
   });
 
+  it("rejects an empty --port= value", () => {
+    expect(() => parseDashboardArgs(["--port="])).toThrow(/requires a value/);
+  });
+
   it("rejects out-of-range and non-integer ports", () => {
     expect(() => parseDashboardArgs(["--port", "70000"])).toThrow(
       /invalid --port/,

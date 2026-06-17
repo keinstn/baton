@@ -20,7 +20,9 @@ export function parseDashboardArgs(argv: string[]): DashboardCliArgs {
       port = parseDashboardPort(next);
       i += 1;
     } else if (a.startsWith("--port=")) {
-      port = parseDashboardPort(a.slice("--port=".length));
+      const raw = a.slice("--port=".length);
+      if (raw.trim() === "") throw new Error("--port requires a value");
+      port = parseDashboardPort(raw);
     } else if (!configPath) {
       configPath = a;
     } else {
