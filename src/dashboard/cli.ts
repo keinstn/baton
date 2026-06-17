@@ -31,12 +31,18 @@ async function main(): Promise<void> {
     targets: config.targets.length,
   });
 
+  let shuttingDown = false;
   const shutdown = (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     logger.info("shutting down", { signal });
     poller.stop();
-    void server.close().then(() => {
-      process.exit(0);
-    });
+    void server
+      .close()
+      .catch(() => undefined)
+      .then(() => {
+        process.exit(0);
+      });
   };
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));
