@@ -29,6 +29,7 @@ follows the Symphony spec unchanged.
 - [`docs/SPEC.md`](docs/SPEC.md) — the Baton service specification (language-agnostic, normative,
   same chapter structure as Symphony's `SPEC.md`)
 - [`CLAUDE.md`](CLAUDE.md) — architecture overview and implementation conventions for contributors
+- [`examples/baton-dashboard.yaml`](examples/baton-dashboard.yaml) — sample aggregated dashboard config
 
 ## Installation
 
@@ -216,6 +217,35 @@ essentials:
 - **Require human review of agent output.** Enable branch protection and required PR review on
   target repositories so agent-authored changes cannot merge unreviewed. Consider running the
   workspace root under a dedicated OS user or container sandbox.
+
+## Aggregated Dashboard (multiple boards)
+
+`baton-dashboard` is a separate optional process that polls the HTTP APIs of multiple `baton`
+instances and presents them in a single view — useful when one operations team manages several
+GitHub Projects boards at once.
+
+**Quick start**
+
+```sh
+# Copy and edit the sample config
+cp examples/baton-dashboard.yaml ./baton-dashboard.yaml
+# Edit targets to point at your running baton instances, then:
+baton-dashboard baton-dashboard.yaml --port 8080
+```
+
+The dashboard is read-only: it does not manage `baton` process lifecycle. Use your OS process
+manager (systemd, pm2, Docker, etc.) to run each `baton` instance independently.
+
+**Multi-instance operation notes** (see also [`docs/SPEC.md` Appendix C](docs/SPEC.md)):
+
+- **Distinct ports** — each `baton` instance that will be aggregated must set a unique
+  `server.port` in its `WORKFLOW.md` front matter (e.g. 8787, 8788, …).
+- **Separate workspace roots** — if the same repository appears in more than one Project,
+  give each instance a distinct `workspace.root` to prevent workspace path collisions.
+- **GraphQL rate budget** — GitHub allows 5,000 GraphQL points per hour per token. When
+  multiple `baton` instances share a `GITHUB_TOKEN`, their queries draw from the same budget.
+  Use distinct tokens (fine-grained PATs or GitHub Apps) or stagger `polling.interval_ms`
+  values to stay within limits.
 
 ## License
 
