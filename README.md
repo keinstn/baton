@@ -30,7 +30,6 @@ follows the Symphony spec unchanged.
 - [`docs/SPEC.md`](docs/SPEC.md) — the Baton service specification (language-agnostic, normative,
   same chapter structure as Symphony's `SPEC.md`)
 - [`CLAUDE.md`](CLAUDE.md) — architecture overview and implementation conventions for contributors
-- [`examples/baton-dashboard.yaml`](examples/baton-dashboard.yaml) — sample aggregated dashboard config
 
 ## Installation
 
@@ -228,6 +227,9 @@ essentials:
 `baton-dashboard` is a separate optional process that polls the HTTP APIs of multiple `baton`
 instances and presents them in a single view — useful when one operations team manages several
 GitHub Projects boards at once.
+
+Use [`examples/baton-dashboard.yaml`](examples/baton-dashboard.yaml) as a starter config for the
+aggregated dashboard process.
 
 **Quick start**
 
