@@ -1,0 +1,57 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - id: changesets
+        uses: changesets/action@v1
+        with:
+          version: npm run version-packages
+          commit: "chore: version packages"
+          createGithubReleases: false
+          title: "chore: version packages"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub release
+        if: steps.changesets.outputs.hasChangesets == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="$(node -p "JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version")"
+
+          if git diff --quiet HEAD^ HEAD -- package.json package-lock.json; then
+            echo "No package version change in this push; skipping GitHub release."
+            exit 0
+          fi
+
+          if gh release view "v${version}" >/dev/null 2>&1; then
+            echo "GitHub release v${version} already exists; skipping."
+            exit 0
+          fi
+
+          gh release create "v${version}" --target "$GITHUB_SHA" --title "v${version}" --generate-notes

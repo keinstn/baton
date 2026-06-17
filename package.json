@@ -13,10 +13,12 @@
   },
   "scripts": {
     "build": "tsc",
+    "changeset": "changeset",
     "typecheck": "tsc --noEmit",
     "format": "biome format --write .",
     "lint": "biome check .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "version-packages": "changeset version && npm install --package-lock-only"
   },
   "dependencies": {
     "liquidjs": "^10.21.0",
@@ -24,6 +26,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.0",
+    "@changesets/cli": "^2.31.0",
     "@types/node": "^25.0.0",
     "typescript": "^5.7.0",
     "vitest": "^4.0.0"
