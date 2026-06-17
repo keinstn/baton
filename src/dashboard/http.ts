@@ -195,7 +195,9 @@ async function handleBoardRefresh(
     return;
   }
   const fetchFn = deps.fetch ?? globalThis.fetch;
-  const refreshUrl = `${board.url.replace(/\/$/, "")}/api/v1/refresh`;
+  const u = new URL(board.url);
+  u.pathname = `${u.pathname.replace(/\/$/, "")}/api/v1/refresh`;
+  const refreshUrl = u.href;
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), 10_000);
   try {

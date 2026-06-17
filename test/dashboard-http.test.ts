@@ -536,6 +536,33 @@ describe("startDashboardServer — POST /api/v1/boards/<name>/refresh", () => {
     }
   });
 
+  it("does not corrupt the refresh URL when board.url contains a query string", async () => {
+    const mockFetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ accepted: true }), {
+          status: 202,
+          headers: { "content-type": "application/json" },
+        }),
+    ) as unknown as typeof globalThis.fetch;
+
+    const srv = await startTestServer({
+      boards: [makeBoard({ url: "http://localhost:8001/prefix?token=abc" })],
+      fetch: mockFetch,
+    });
+    try {
+      await fetch(`${srv.baseUrl}/api/v1/boards/alpha/refresh`, {
+        method: "POST",
+      });
+      const [url] = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
+        string,
+      ];
+      // query string must not appear in the middle of the path
+      expect(url).toBe("http://localhost:8001/prefix/api/v1/refresh?token=abc");
+    } finally {
+      await srv.close();
+    }
+  });
+
   it("preserves base path in board.url when constructing the proxied refresh URL", async () => {
     const mockFetch = vi.fn(
       async () =>
