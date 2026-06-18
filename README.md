@@ -278,11 +278,11 @@ Baton uses [Changesets](https://github.com/changesets/changesets) to manage vers
 1. Merge `develop` into `main`.
 2. `.github/workflows/release.yml` runs on the `main` push and uses `changesets/action` to open or
    update a version PR.
-   - Configure a repo secret named `CHANGESETS_GITHUB_TOKEN` with a PAT or GitHub App token that
-     can create PRs and trigger normal `pull_request` CI; the default Actions `GITHUB_TOKEN` is not
-     sufficient for this cross-workflow trigger path. The release workflow uses that same token for
-     both checkout and `changesets/action` so the generated branch and PR are created by the same
-     CI-capable identity.
+   - Configure a repo secret named `CHANGESETS_GITHUB_TOKEN` with a PAT that can create PRs and
+     trigger normal `pull_request` CI; the default Actions `GITHUB_TOKEN` is not sufficient for
+     this cross-workflow trigger path. The release workflow uses that same token for both checkout
+     and `changesets/action` so the generated branch and PR are created by the same CI-capable
+     identity.
 3. That version PR runs `npm run version-packages`, which applies the accumulated changesets and
    updates both `package.json` and `package-lock.json`.
 4. Merge the version PR into `main`.
