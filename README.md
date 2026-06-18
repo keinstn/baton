@@ -284,7 +284,7 @@ Baton uses [Changesets](https://github.com/changesets/changesets) to manage vers
      and `changesets/action` so the generated branch and PR are created by the same CI-capable
      identity.
 3. That version PR runs `npm run version-packages`, which applies the accumulated changesets and
-   updates both `package.json` and `package-lock.json`.
+   updates `package.json`, `package-lock.json`, and `CHANGELOG.md`.
 4. Merge the version PR into `main`.
 5. The same release workflow sees the version bump commit, creates `vX.Y.Z`, and publishes a
    GitHub Release with generated notes.
