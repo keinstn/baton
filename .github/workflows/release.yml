@@ -35,7 +35,7 @@ jobs:
           createGithubReleases: false
           title: "chore: version packages"
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.CHANGESETS_GITHUB_TOKEN }}
 
       - name: Create GitHub release
         if: steps.changesets.outputs.hasChangesets == 'false'
