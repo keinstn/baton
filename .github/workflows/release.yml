@@ -43,9 +43,15 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          version="$(node -p "JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version")"
+          if ! git cat-file -e HEAD^:package.json 2>/dev/null; then
+            echo "Previous package.json not available; skipping GitHub release."
+            exit 0
+          fi
 
-          if git diff --quiet HEAD^ HEAD -- package.json package-lock.json; then
+          version="$(node -p "JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version")"
+          previous_version="$(git show HEAD^:package.json | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version")"
+
+          if [ "$previous_version" = "$version" ]; then
             echo "No package version change in this push; skipping GitHub release."
             exit 0
           fi
