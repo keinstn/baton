@@ -5,8 +5,7 @@
   "license": "Apache-2.0",
   "type": "module",
   "bin": {
-    "baton": "dist/cli.js",
-    "baton-dashboard": "dist/dashboard/cli.js"
+    "baton": "dist/cli.js"
   },
   "engines": {
     "node": ">=22"

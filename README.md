@@ -222,45 +222,6 @@ essentials:
   target repositories so agent-authored changes cannot merge unreviewed. Consider running the
   workspace root under a dedicated OS user or container sandbox.
 
-## Aggregated Dashboard (multiple boards)
-
-`baton-dashboard` is a separate optional process that polls the HTTP APIs of multiple `baton`
-instances and presents them in a single view — useful when one operations team manages several
-GitHub Projects boards at once.
-
-Use [`examples/baton-dashboard.yaml`](examples/baton-dashboard.yaml) as a starter config for the
-aggregated dashboard process.
-
-```mermaid
-flowchart LR
-    A["baton\nboard A :8787"] --> D["baton-dashboard\n:8080"]
-    B["baton\nboard B :8788"] --> D
-    C["baton\nboard C :8789"] --> D
-```
-
-**Quick start**
-
-```sh
-# Copy and edit the sample config
-cp examples/baton-dashboard.yaml ./baton-dashboard.yaml
-# Edit targets to point at your running baton instances, then:
-npm exec baton-dashboard -- baton-dashboard.yaml --port 8080
-```
-
-The dashboard is read-only: it does not manage `baton` process lifecycle. Use your OS process
-manager (systemd, pm2, Docker, etc.) to run each `baton` instance independently.
-
-**Multi-instance operation notes** (see also [`docs/SPEC.md` Appendix C](docs/SPEC.md)):
-
-- **Distinct ports** — each `baton` instance that will be aggregated must set a unique
-  `server.port` in its `WORKFLOW.md` front matter (e.g. 8787, 8788, …).
-- **Separate workspace roots** — if the same repository appears in more than one Project,
-  give each instance a distinct `workspace.root` to prevent workspace path collisions.
-- **GraphQL rate budget** — GitHub allows 5,000 GraphQL points per hour per token. When
-  multiple `baton` instances share a `GITHUB_TOKEN`, their queries draw from the same budget.
-  Use distinct tokens (fine-grained PATs or GitHub Apps) or stagger `polling.interval_ms`
-  values to stay within limits.
-
 ## Release flow
 
 Baton uses [Changesets](https://github.com/changesets/changesets) to manage version bumps from
