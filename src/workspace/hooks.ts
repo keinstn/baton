@@ -33,6 +33,7 @@ export function runHookScript(
       env: { ...process.env, ...opts.env },
       stdio: ["ignore", "pipe", "pipe"],
       detached: true,
+      windowsHide: true,
     });
 
     let output = "";

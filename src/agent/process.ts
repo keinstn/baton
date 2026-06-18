@@ -94,11 +94,13 @@ export function runSubprocess(
           cwd: session.workspace,
           stdio: ["pipe", "pipe", "pipe"],
           detached: true,
+          windowsHide: true,
         })
       : spawn("bash", ["-lc", opts.command], {
           cwd: session.workspace,
           stdio: ["ignore", "pipe", "pipe"],
           detached: true,
+          windowsHide: true,
         });
     session.proc = proc;
     let resolveProcClosed = () => {};

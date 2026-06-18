@@ -68,6 +68,7 @@ class WindowsTreeKiller implements TreeKiller {
     return new Promise((resolve) => {
       const tk = spawn("taskkill", ["/F", "/T", "/PID", String(pid)], {
         stdio: ["ignore", "ignore", "pipe"],
+        windowsHide: true,
       });
       let stderr = "";
       tk.stderr?.on("data", (chunk) => {
