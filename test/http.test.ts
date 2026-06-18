@@ -218,17 +218,17 @@ describe("startHttpServer (SPEC §13.7)", () => {
       }
     });
 
-    it("resolves owner_repo-N identifiers produced by the tracker", async () => {
+    it("resolves owner-repo-N identifiers produced by the tracker", async () => {
       const srv = await startTestServer(
         makeSnapshot({
-          running: [makeRunning({ identifier: "acme_my-repo-1" })],
+          running: [makeRunning({ identifier: "acme-my-repo-1" })],
         }),
       );
       try {
-        const res = await fetch(`${srv.baseUrl}/api/v1/acme_my-repo-1`);
+        const res = await fetch(`${srv.baseUrl}/api/v1/acme-my-repo-1`);
         expect(res.status).toBe(200);
         const body = (await res.json()) as { identifier: string };
-        expect(body.identifier).toBe("acme_my-repo-1");
+        expect(body.identifier).toBe("acme-my-repo-1");
       } finally {
         await srv.close();
       }

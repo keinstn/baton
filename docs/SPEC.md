@@ -124,7 +124,7 @@ Fields:
     project. Retained so agents/operators can address project field updates; the orchestrator
     itself does not write fields.
 - `identifier` (string)
-  - Human-readable key composed as `<repository_name>-<issue_number>` (example: `myrepo-123`).
+  - Human-readable key composed as `<owner>-<repository_name>-<issue_number>` (example: `acme-myrepo-123`). The `/` separator in `owner/repo` is replaced with `-` so the identifier is a single URL-safe path segment.
 - `number` (integer) — issue number.
 - `repository` (string) — `owner/name`.
 - `title` (string)
@@ -196,7 +196,7 @@ replaces Symphony's `codex_totals` with the same shape (tokens + runtime seconds
 ### 4.2 Stable Identifiers and Normalization Rules
 
 - `Issue ID` — GraphQL Issue node ID; use for tracker lookups and internal map keys.
-- `Issue Identifier` — `<repo>-<number>`; use for logs and workspace naming.
+- `Issue Identifier` — `<owner>-<repo>-<number>` (e.g. `acme-myrepo-123`); use for logs and workspace naming. The `/` in `owner/repo` is replaced with `-`.
 - `Workspace Key` — derive from `issue.identifier` by replacing any character not in
   `[A-Za-z0-9._-]` with `_`. `[= Symphony]`
 - `Normalized Issue State` — compare Status option names after `lowercase` + trim.

@@ -190,9 +190,9 @@ describe("candidate fetch and normalization (SPEC §11.2-11.3)", () => {
     ]);
     const issues = await c.fetchCandidateIssues();
     expect(issues.map((i) => i.identifier)).toEqual([
-      "acme_repo-1",
-      "acme_repo-2",
-      "acme_repo-3",
+      "acme-repo-1",
+      "acme-repo-2",
+      "acme-repo-3",
     ]);
   });
 
@@ -212,8 +212,8 @@ describe("candidate fetch and normalization (SPEC §11.2-11.3)", () => {
     ]);
     const issues = await c.fetchCandidateIssues();
     expect(issues.map((i) => i.identifier)).toEqual([
-      "acme_my-repo-1",
-      "other_my-repo-1",
+      "acme-my-repo-1",
+      "other-my-repo-1",
     ]);
   });
 
@@ -239,7 +239,7 @@ describe("candidate fetch and normalization (SPEC §11.2-11.3)", () => {
       cfg,
     );
     const issues = await c.fetchCandidateIssues();
-    expect(issues.map((i) => i.identifier)).toEqual(["acme_repo-1"]);
+    expect(issues.map((i) => i.identifier)).toEqual(["acme-repo-1"]);
   });
 
   it("normalizes labels to lowercase, derives priority position, and flags closed issues", async () => {
@@ -268,7 +268,7 @@ describe("candidate fetch and normalization (SPEC §11.2-11.3)", () => {
     expect(issue?.priority).toBe(2);
     expect(issue?.closed).toBe(true);
     expect(issue?.repository).toBe("acme/repo");
-    expect(issue?.identifier).toBe("acme_repo-1");
+    expect(issue?.identifier).toBe("acme-repo-1");
     expect(issue?.blockedBy).toEqual([]);
   });
 
