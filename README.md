@@ -261,6 +261,44 @@ manager (systemd, pm2, Docker, etc.) to run each `baton` instance independently.
   Use distinct tokens (fine-grained PATs or GitHub Apps) or stagger `polling.interval_ms`
   values to stay within limits.
 
+## Release flow
+
+Baton uses [Changesets](https://github.com/changesets/changesets) to manage version bumps from
+`develop` to `main`.
+
+**On `develop`**
+
+1. Add your code or docs change as usual.
+2. If the change should affect the next release, run `npm run changeset` and commit the generated
+   `.changeset/*.md` file with a `major`, `minor`, or `patch` bump for `baton`.
+3. Merge feature/fix PRs into `develop`.
+
+**When releasing to `main`**
+
+1. Merge `develop` into `main`.
+2. `.github/workflows/release.yml` runs on the `main` push and uses `changesets/action` to open or
+   update a version PR.
+   - Configure a repo secret named `CHANGESETS_GITHUB_TOKEN` with a PAT that can create PRs and
+     trigger normal `pull_request` CI; the default Actions `GITHUB_TOKEN` is not sufficient for
+     this cross-workflow trigger path. The release workflow uses that same token for both checkout
+     and `changesets/action` so the generated branch and PR are created by the same CI-capable
+     identity.
+3. That version PR runs `npm run version-packages`, which applies the accumulated changesets and
+   updates both `package.json` and `package-lock.json`.
+4. Merge the version PR into `main`.
+5. The same release workflow sees the version bump commit, creates `vX.Y.Z`, and publishes a
+   GitHub Release with generated notes.
+6. Merge `main` back into `develop` so the consumed `.changeset/*.md` files and the released
+   package version stay in sync on the development branch before the next cycle starts.
+
+**Bump guidelines**
+
+- `major` — breaking CLI/config/workflow contract changes or an intentional compatibility reset
+  like the `v1.0.0` release.
+- `minor` — new user-facing capability, such as a new CLI surface or materially expanded behavior.
+- `patch` — bug fixes, documentation clarifications, and internal maintenance that should ship in
+  the next release.
+
 ## License
 
 Apache License 2.0 (same as Symphony).
