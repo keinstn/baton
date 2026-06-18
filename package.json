@@ -1,6 +1,6 @@
 {
   "name": "baton",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Conducts coding agents against a GitHub Projects board (Symphony-derived orchestrator)",
   "license": "Apache-2.0",
   "type": "module",

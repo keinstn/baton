@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.1.0
+
+### Minor Changes
+
+- b596c73: Remove the aggregated dashboard (`baton-dashboard`) feature. A single baton instance can handle multiple repositories from one board (omit `tracker.repos` to target all repos; workspaces are namespaced as `<repo>-<issue#>`), so the separate aggregation process is no longer needed. This removes the `baton-dashboard` bin, `src/dashboard/`, the example config, and SPEC Appendix C. The per-instance HTTP server (§13.7 `/api/v1/state`, `/api/v1/refresh`) is unaffected.
+
+### Patch Changes
+
+- 8a61b68: Fix workspace directory identifier collisions when two repositories share the
+  same name under different owners. Workspace keys are now built from
+  `nameWithOwner` (`owner__repo-N`) instead of the bare repo name (`repo-N`),
+  making them globally unique across organisations.
+- 588af5b: Fix Windows bash spawn failures: prefer Git Bash over WSL's `System32\bash.exe`
+  on PATH so hook and agent subprocesses can find `git`/`gh`, and pass
+  `windowsHide: true` to all `spawn` calls so detached children don't pop up
+  console windows.
+
 ## 1.0.0
 
 ### Major Changes
