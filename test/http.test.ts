@@ -217,6 +217,22 @@ describe("startHttpServer (SPEC §13.7)", () => {
         await srv.close();
       }
     });
+
+    it("resolves owner__repo-N identifiers produced by the tracker", async () => {
+      const srv = await startTestServer(
+        makeSnapshot({
+          running: [makeRunning({ identifier: "acme__my-repo-1" })],
+        }),
+      );
+      try {
+        const res = await fetch(`${srv.baseUrl}/api/v1/acme__my-repo-1`);
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { identifier: string };
+        expect(body.identifier).toBe("acme__my-repo-1");
+      } finally {
+        await srv.close();
+      }
+    });
   });
 
   describe("POST /api/v1/refresh", () => {
