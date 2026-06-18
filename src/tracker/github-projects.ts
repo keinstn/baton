@@ -288,7 +288,7 @@ export class GitHubProjectsClient implements TrackerClient {
     return {
       id: content.id,
       itemId,
-      identifier: `${nameWithOwner}-${content.number}`,
+      identifier: `${nameWithOwner.replace("/", "_")}-${content.number}`,
       number: content.number,
       repository: nameWithOwner,
       title: content.title ?? "",
