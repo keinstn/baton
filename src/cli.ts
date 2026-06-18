@@ -10,11 +10,17 @@ import { Logger } from "./observability/logger.js";
 import { Orchestrator } from "./orchestrator/orchestrator.js";
 import { startupTerminalCleanup } from "./orchestrator/startup.js";
 import { createWorker } from "./orchestrator/worker.js";
+import { ensureGitBashOnWindowsPath } from "./platform/git-bash.js";
 import { makePlatform } from "./platform/platform.js";
 import { GitHubProjectsClient } from "./tracker/github-projects.js";
 import { loadWorkflow } from "./workflow/loader.js";
 import { WorkflowReloader } from "./workflow/reloader.js";
 import { WorkspaceManager } from "./workspace/manager.js";
+
+// On Windows, `bash` on PATH may resolve to WSL's System32\bash.exe rather
+// than Git Bash. Hook and agent subprocesses use Git-Bash-style paths so they
+// require Git Bash. Prefer Git Bash on PATH before any bash subprocess starts.
+ensureGitBashOnWindowsPath();
 
 async function main(): Promise<void> {
   const logger = new Logger({ service: "baton" });
