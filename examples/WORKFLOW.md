@@ -24,6 +24,15 @@ hooks:
       GIT_IN_PROGRESS=true
     fi
     if [ "$BATON_ISSUE_STATUS" = "Rework" ]; then
+      if [ -f .git/MERGE_HEAD ]; then
+        git merge --abort
+      fi
+      if [ -f .git/CHERRY_PICK_HEAD ]; then
+        git cherry-pick --abort
+      fi
+      if [ -d .git/rebase-merge ] || [ -d .git/rebase-apply ]; then
+        git rebase --abort
+      fi
       git switch -C "$BRANCH" origin/main
     elif [ "$GIT_IN_PROGRESS" = true ]; then
       :
@@ -71,7 +80,9 @@ Rules:
   merge, check whether the workspace is already in the middle of a merge, rebase, or cherry-pick
   from a prior attempt. If so, inspect the current state and either finish that in-progress
   operation or abort it intentionally before continuing; do not start a second merge on top of an
-  unfinished one. After the branch state is clean, integrate the current PR base with
+  unfinished one. If there are existing local changes from a prior attempt, inspect `git status`
+  and either continue that work, commit it, or stash it intentionally before merging the base.
+  After the branch state is clean, integrate the current PR base with
   `git merge --no-edit "origin/$BASE_BRANCH"`. If it merges cleanly (or is already up to date),
   continue. If it reports conflicts, resolve each unmerged path by hand based on the intent of
   both sides — do not blindly `--ours`/`--theirs` the whole file — then run the project's tests,
