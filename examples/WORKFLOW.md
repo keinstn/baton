@@ -98,7 +98,7 @@ Rules:
     latest reviewer comment that does not already have a later `<!-- baton-agent-reply -->` reply
     in the same thread as the item to address, and post the reply using the first comment in the
     thread (`databaseId` of `comments.nodes[0]`)
-    (`gh api repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/comments/<root_databaseId>/replies -f body='<!-- baton-agent-reply --> ...'`);
+    (`gh api repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/comments/<root_databaseId>/replies -f body='<!-- baton-agent-reply --> [Baton Implementer] ...'`);
     do not resolve the threads.
   - When all feedback is resolved, push the branch with a normal `git push` (never force-push;
     this single push carries both any merge commit and your feedback changes) and move the issue
@@ -120,6 +120,9 @@ Rules:
 - If the issue status is "Rework", close the existing PR, reset the branch to origin/HEAD, and
   take a fresh implementation pass addressing the review feedback. When done, open a new PR and
   move the issue status to the chosen review state.
+- Every PR comment or reply that this workflow posts must include a visible `[Baton Implementer]`
+  prefix so the implementation workflow's activity can be distinguished from human comments and
+  from the reviewer workflow.
 - Report progress by editing a single persistent comment on the issue. The comment must begin
   with the marker `<!-- baton-progress -->`. On each run, search existing comments for that
   marker first; if found, edit it in place; if not found, create it. Include
