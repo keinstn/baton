@@ -40,9 +40,13 @@ copilot:
   # an explicit operator decision.
   allow_all_tools: false
   allow_tools:
-    - "shell(gh)"
-    - "shell(git)"
-    - view
+    # shell(command:*) syntax: wildcard required to permit any subcommand.
+    # "shell(gh)" without a wildcard matches only the bare `gh` invocation and
+    # rejects every subcommand (pr, api, issue…), producing tool_failed: unknown.
+    - "shell(gh:*)"    # gh pr diff/view/checks/api/comment/issue
+    - "shell(git:*)"   # git fetch/switch/log/ls-remote (before_run hook + review)
+    - read_file        # read local file contents for review context
+    - search_files     # search through repository code
 ---
 
 You are working on GitHub issue {{ issue.repository }}#{{ issue.number }}: {{ issue.title }}.
