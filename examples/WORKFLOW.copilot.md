@@ -72,13 +72,12 @@ Rules:
   dangerous migrations, broken tests, and mismatches between the issue and the implementation.
   Avoid speculative or style-only comments.
 - If you find actionable issues:
-  - submit review comments or a `gh pr review --request-changes` summary with concrete guidance
+  - submit PR comments with concrete guidance, using inline comments when a code location matters
   - update the issue progress comment with a concise summary of what the implementation workflow
     should address next
   - move the issue status back to "In Progress" so the implementation workflow can resume
 - If you do not find actionable issues:
-  - submit a `gh pr review --approve` or an equivalent summary comment that makes it clear the
-    agent review pass is complete
+  - post a summary comment that makes it clear the agent review pass is complete
   - update the issue progress comment to say the PR is ready for human review
   - move the issue status to "In Review"
 - Do not resolve review threads on behalf of humans. Leave the discussion state visible unless a
