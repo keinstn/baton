@@ -18,11 +18,26 @@ hooks:
   before_run: |
     git fetch origin
     BRANCH="agent/$BATON_ISSUE_IDENTIFIER"
+    GIT_IN_PROGRESS=false
+    if [ -f .git/MERGE_HEAD ] || [ -f .git/CHERRY_PICK_HEAD ] || \
+       [ -d .git/rebase-merge ] || [ -d .git/rebase-apply ]; then
+      GIT_IN_PROGRESS=true
+    fi
     if [ "$BATON_ISSUE_STATUS" = "Rework" ]; then
       git switch -C "$BRANCH" origin/main
     elif git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null 2>&1 && \
          gh pr list --repo "$BATON_ISSUE_REPO" --head "$BRANCH" --state open --json number --jq 'length > 0' | grep -q true; then
-      git switch -C "$BRANCH" "origin/$BRANCH"
+      if [ "$GIT_IN_PROGRESS" = true ]; then
+        CURRENT_BRANCH=$(git branch --show-current)
+        if [ "$CURRENT_BRANCH" != "$BRANCH" ]; then
+          echo "resume the in-progress git operation on $BRANCH before switching branches" >&2
+          exit 1
+        fi
+      elif git show-ref --verify --quiet "refs/heads/$BRANCH"; then
+        git switch "$BRANCH"
+      else
+        git switch -c "$BRANCH" --track "origin/$BRANCH"
+      fi
     else
       git switch -C "$BRANCH" origin/main
     fi
@@ -106,8 +121,7 @@ Rules:
   the issue. Then move the issue's Status to "In Review" on the project board.
 {% if attempt %}
 This is retry/continuation attempt {{ attempt }}.
-- Resume from the remote branch state (the before_run hook has already synced the local branch
-  to origin); do not restart from scratch.
+- Resume from the current workspace state; do not restart from scratch.
 - Check existing branch/PR state with `gh` before redoing any work.
 - Do not repeat already-completed steps unless new changes require it.
 {% endif %}
