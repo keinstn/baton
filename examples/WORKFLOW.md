@@ -82,7 +82,8 @@ Rules:
     - if it is already up to date, continue
     - if it reports conflicts, resolve each unmerged path by hand based on the intent of both
       sides; do not blindly `--ours`/`--theirs` the whole file
-    - run the project's tests and commit the merge result before continuing
+    - run the project's tests before continuing; if you resolved conflicts manually, commit
+      the merge result first
   - Collect the current actionable feedback set for that PR and address each item (code changes or
     explicit, justified pushback). For PR conversation feedback, post any agent follow-up as a
     later PR comment with a marker of the form
