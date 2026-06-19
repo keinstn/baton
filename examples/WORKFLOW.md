@@ -54,7 +54,13 @@ Rules:
 - If the issue status is "Todo" and no open PR exists for this branch, move the issue to
   "In Progress" on the project board before starting work.
 - If the issue status is "Todo" and an open PR already exists for this branch, move the issue
-  to "In Progress" on the project board and treat the run as a feedback loop. Resolve the open
+  to "In Progress" on the project board and treat the run as a feedback loop. Before addressing
+  feedback, integrate the base branch so the PR is not stuck on conflicts: run
+  `git merge --no-edit origin/main`. If it merges cleanly (or is already up to date) just
+  continue. If it reports conflicts, resolve each unmerged path by hand based on the intent of
+  both sides — do not blindly `--ours`/`--theirs` the whole file — then run the project's tests,
+  commit the merge, and continue. Reflect the merge with a normal `git push` (never force-push).
+  Resolve the open
   PR number (`PR_NUMBER=$(gh pr view --json number --jq '.number')`), collect the current
   actionable feedback set for that PR, address each item (code changes or explicit, justified
   pushback). For PR conversation feedback, post any agent follow-up as a later PR comment with a
