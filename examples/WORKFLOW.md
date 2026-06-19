@@ -67,32 +67,35 @@ Rules:
   "In Progress" on the project board before starting work.
 - If an open PR already exists for this branch and the issue status is not "Rework", treat the
   run as a feedback loop. If the issue status is "Todo", move it to "In Progress" on the project
-  board before starting. Resolve the open PR number and base branch
-  (`BRANCH="agent/$BATON_ISSUE_IDENTIFIER"`,
-  `PR_NUMBER=$(gh pr view "$BRANCH" --repo "$BATON_ISSUE_REPO" --json number --jq '.number')`,
-  `BASE_BRANCH=$(gh pr view "$BRANCH" --repo "$BATON_ISSUE_REPO" --json baseRefName --jq '.baseRefName')`). Before starting a new base
-  merge, check whether the workspace is already in the middle of a merge, rebase, or cherry-pick
-  from a prior attempt. If so, inspect the current state and either finish that in-progress
-  operation or abort it intentionally before continuing; do not start a second merge on top of an
-  unfinished one. If there are existing local changes from a prior attempt, inspect `git status`
-  and either continue that work, commit it, or stash it intentionally before merging the base.
-  After the branch state is clean, integrate the current PR base with
-  `git merge --no-edit "origin/$BASE_BRANCH"`. If it merges cleanly (or is already up to date),
-  continue. If it reports conflicts, resolve each unmerged path by hand based on the intent of
-  both sides — do not blindly `--ours`/`--theirs` the whole file — then run the project's tests,
-  commit the merge, and continue. Then collect the current actionable feedback set for that PR,
-  address each item (code changes
-  or explicit, justified pushback). For PR conversation feedback, post any agent follow-up as a
-  later PR comment with a marker of the form
-  `<!-- baton-agent-reply source_comment_id=<comment_id> -->` so Baton can tell which
-  conversation comment has already been handled. For each unresolved review thread, treat the
-  latest reviewer comment that does not already have a later `<!-- baton-agent-reply -->` reply
-  in the same thread as the item to address, and post the reply using the first comment in the
-  thread (`databaseId` of `comments.nodes[0]`)
-  (`gh api repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/comments/<root_databaseId>/replies -f body='<!-- baton-agent-reply --> ...'`);
-  do not resolve the threads. When all feedback is resolved, push the branch with a normal
-  `git push` (never force-push; this single push carries both any merge commit and your feedback
-  changes) and move the issue status back to "In Review".
+  board before starting.
+  - Resolve the Baton branch, PR number, and PR base branch:
+    `BRANCH="agent/$BATON_ISSUE_IDENTIFIER"`
+    `PR_NUMBER=$(gh pr view "$BRANCH" --repo "$BATON_ISSUE_REPO" --json number --jq '.number')`
+    `BASE_BRANCH=$(gh pr view "$BRANCH" --repo "$BATON_ISSUE_REPO" --json baseRefName --jq '.baseRefName')`
+  - Before starting a new base merge, inspect the current workspace state:
+    - if a merge, rebase, or cherry-pick is already in progress, finish it or abort it
+      intentionally before continuing; do not start a second merge on top of an unfinished one
+    - if there are existing local changes from a prior attempt, inspect `git status` and either
+      continue that work, commit it, or stash it intentionally before merging the base
+  - After the branch state is clean, integrate the current PR base with
+    `git merge --no-edit "origin/$BASE_BRANCH"`.
+    - if it is already up to date, continue
+    - if it reports conflicts, resolve each unmerged path by hand based on the intent of both
+      sides; do not blindly `--ours`/`--theirs` the whole file
+    - run the project's tests and commit the merge result before continuing
+  - Collect the current actionable feedback set for that PR and address each item (code changes or
+    explicit, justified pushback). For PR conversation feedback, post any agent follow-up as a
+    later PR comment with a marker of the form
+    `<!-- baton-agent-reply source_comment_id=<comment_id> -->` so Baton can tell which
+    conversation comment has already been handled. For each unresolved review thread, treat the
+    latest reviewer comment that does not already have a later `<!-- baton-agent-reply -->` reply
+    in the same thread as the item to address, and post the reply using the first comment in the
+    thread (`databaseId` of `comments.nodes[0]`)
+    (`gh api repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/comments/<root_databaseId>/replies -f body='<!-- baton-agent-reply --> ...'`);
+    do not resolve the threads.
+  - When all feedback is resolved, push the branch with a normal `git push` (never force-push;
+    this single push carries both any merge commit and your feedback changes) and move the issue
+    status back to "In Review".
 - Actionable feedback means:
   - PR conversation comments on `issues/$PR_NUMBER/comments` that do not themselves contain
     `<!-- baton-agent-reply source_comment_id=<comment_id> -->` and do not already have a later
