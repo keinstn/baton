@@ -55,8 +55,8 @@ Rules:
 - Work only inside this workspace. This workflow is review-only: inspect the current PR and leave
   review feedback through GitHub. Do not create commits, push branch changes, or implement the
   fix yourself.
-- This workflow is paired with the implementation workflow in `examples/WORKFLOW.md`. It should
-  only act while the issue status is "Agent Review".
+- This workflow is paired with an implementation workflow. It should only act while the issue
+  status is "Agent Review".
 - Resolve the Baton branch and confirm there is an open PR for it:
   `BRANCH="agent/$BATON_ISSUE_IDENTIFIER"`
   `OPEN_PR_COUNT=$(gh pr list --repo "$BATON_ISSUE_REPO" --head "$BRANCH" --state open --json number --jq 'length')`
