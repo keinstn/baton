@@ -142,7 +142,10 @@ agent:
 If you run the two example workflows together, start two Baton processes against the same
 project board and add an `Agent Review` status. The Claude implementation workflow hands an item
 from `In Progress` to `Agent Review`; the Copilot review workflow either returns it to
-`In Progress` for fixes or advances it to `In Review` for human review.
+`In Progress` for fixes or advances it to `In Review` for human review. Give each process its own
+`workspace.root` (and its own dashboard `server.port`, if enabled) so they never share a working
+tree — the review workflow re-syncs to the pushed PR head, so it does not need the implementer's
+local state.
 
 **2. Set environment variables**
 

@@ -11,18 +11,22 @@ tracker:
 polling:
   interval_ms: 30000
 workspace:
-  root: ~/baton_workspaces
+  # Use a separate root from the implementation workflow (examples/WORKFLOW.md) so the two
+  # Baton processes never share a working tree. The reviewer always re-syncs to origin below,
+  # so it reviews the published PR head rather than the implementer's local state.
+  root: ~/baton_review_workspaces
 hooks:
   after_create: |
     gh repo clone "$BATON_ISSUE_REPO" . -- --depth 50
   before_run: |
     git fetch origin
     BRANCH="agent/$BATON_ISSUE_IDENTIFIER"
-    if git show-ref --verify --quiet "refs/heads/$BRANCH"; then
-      git switch "$BRANCH"
-    elif git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null 2>&1 && \
-         gh pr list --repo "$BATON_ISSUE_REPO" --head "$BRANCH" --state open --json number --jq 'length > 0' | grep -q true; then
-      git switch -c "$BRANCH" --track "origin/$BRANCH"
+    # Review-only: never push, so always hard-reset to the origin head. This avoids reviewing a
+    # stale local branch when re-reviewing after the implementer pushed new commits.
+    if git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null 2>&1 && \
+       gh pr list --repo "$BATON_ISSUE_REPO" --head "$BRANCH" --state open --json number --jq 'length > 0' | grep -q true; then
+      git switch -C "$BRANCH" --track "origin/$BRANCH"
+      git reset --hard "origin/$BRANCH"
     else
       git switch --detach origin/main
     fi
