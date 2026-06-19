@@ -18,11 +18,23 @@ hooks:
   before_run: |
     git fetch origin
     BRANCH="agent/$BATON_ISSUE_IDENTIFIER"
+    # Preserve existing workspace state for normal retries/continuations: keep
+    # in-progress git operations and reuse a local branch when possible. Only
+    # Rework resets the branch back to origin/main.
+    GIT_IN_PROGRESS=false
+    if [ -f .git/MERGE_HEAD ] || [ -f .git/CHERRY_PICK_HEAD ] || \
+       [ -d .git/rebase-merge ] || [ -d .git/rebase-apply ]; then
+      GIT_IN_PROGRESS=true
+    fi
     if [ "$BATON_ISSUE_STATUS" = "Rework" ]; then
       git switch -C "$BRANCH" origin/main
+    elif [ "$GIT_IN_PROGRESS" = true ]; then
+      :
+    elif git show-ref --verify --quiet "refs/heads/$BRANCH"; then
+      git switch "$BRANCH"
     elif git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null 2>&1 && \
          gh pr list --repo "$BATON_ISSUE_REPO" --head "$BRANCH" --state open --json number --jq 'length > 0' | grep -q true; then
-      git switch "$BRANCH"
+      git switch -c "$BRANCH" --track "origin/$BRANCH"
     else
       git switch -C "$BRANCH" origin/main
     fi
@@ -53,19 +65,38 @@ Rules:
   project's tests.
 - If the issue status is "Todo" and no open PR exists for this branch, move the issue to
   "In Progress" on the project board before starting work.
-- If the issue status is "Todo" and an open PR already exists for this branch, move the issue
-  to "In Progress" on the project board and treat the run as a feedback loop. Resolve the open
-  PR number (`PR_NUMBER=$(gh pr view --json number --jq '.number')`), collect the current
-  actionable feedback set for that PR, address each item (code changes or explicit, justified
-  pushback). For PR conversation feedback, post any agent follow-up as a later PR comment with a
-  marker of the form `<!-- baton-agent-reply source_comment_id=<comment_id> -->` so Baton can
-  tell which conversation comment has already been handled. For each unresolved review thread,
-  treat the latest reviewer comment that does not already have a later
-  `<!-- baton-agent-reply -->` reply in the same thread as the item to address, and post the
-  reply using the first comment in the thread (`databaseId` of `comments.nodes[0]`)
-  (`gh api repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/comments/<root_databaseId>/replies -f body='<!-- baton-agent-reply --> ...'`);
-  do not resolve the threads. When all feedback is resolved, push the branch and move the issue
-  status back to "In Review".
+- If an open PR already exists for this branch and the issue status is not "Rework", treat the
+  run as a feedback loop. If the issue status is "Todo", move it to "In Progress" on the project
+  board before starting.
+  - Resolve the Baton branch, PR number, and PR base branch:
+    `BRANCH="agent/$BATON_ISSUE_IDENTIFIER"`
+    `PR_NUMBER=$(gh pr view "$BRANCH" --repo "$BATON_ISSUE_REPO" --json number --jq '.number')`
+    `BASE_BRANCH=$(gh pr view "$BRANCH" --repo "$BATON_ISSUE_REPO" --json baseRefName --jq '.baseRefName')`
+  - Before starting a new base merge, inspect the current workspace state:
+    - if a merge, rebase, or cherry-pick is already in progress, finish it or abort it
+      intentionally before continuing; do not start a second merge on top of an unfinished one
+    - if there are existing local changes from a prior attempt, inspect `git status` and either
+      continue that work, commit it, or stash it intentionally before merging the base
+  - After the branch state is clean, integrate the current PR base with
+    `git merge --no-edit "origin/$BASE_BRANCH"`.
+    - if it is already up to date, continue
+    - if it reports conflicts, resolve each unmerged path by hand based on the intent of both
+      sides; do not blindly `--ours`/`--theirs` the whole file
+    - run the project's tests before continuing; if you resolved conflicts manually, commit
+      the merge result first
+  - Collect the current actionable feedback set for that PR and address each item (code changes or
+    explicit, justified pushback). For PR conversation feedback, post any agent follow-up as a
+    later PR comment with a marker of the form
+    `<!-- baton-agent-reply source_comment_id=<comment_id> -->` so Baton can tell which
+    conversation comment has already been handled. For each unresolved review thread, treat the
+    latest reviewer comment that does not already have a later `<!-- baton-agent-reply -->` reply
+    in the same thread as the item to address, and post the reply using the first comment in the
+    thread (`databaseId` of `comments.nodes[0]`)
+    (`gh api repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/comments/<root_databaseId>/replies -f body='<!-- baton-agent-reply --> ...'`);
+    do not resolve the threads.
+  - When all feedback is resolved, push the branch with a normal `git push` (never force-push;
+    this single push carries both any merge commit and your feedback changes) and move the issue
+    status back to "In Review".
 - Actionable feedback means:
   - PR conversation comments on `issues/$PR_NUMBER/comments` that do not themselves contain
     `<!-- baton-agent-reply source_comment_id=<comment_id> -->` and do not already have a later
@@ -80,21 +111,18 @@ Rules:
     `pulls/$PR_NUMBER/reviews`
   - paginate all list results; for top-level reviews, later `APPROVED` or `DISMISSED` reviews
     from the same reviewer supersede older requests or comments
-- If the issue status is "Rework", treat it as a full approach reset: close the existing PR,
-  create a fresh branch from origin/main, and restart implementation from scratch addressing
-  the review feedback. When done, open a new PR and move the issue status to "In Review".
+- If the issue status is "Rework", close the existing PR, reset the branch to origin/main, and
+  take a fresh implementation pass addressing the review feedback. When done, open a new PR and
+  move the issue status to "In Review".
 - Report progress by editing a single persistent comment on the issue. The comment must begin
   with the marker `<!-- baton-progress -->`. On each run, search existing comments for that
   marker first; if found, edit it in place; if not found, create it. Do not post multiple
   separate comments.
+- On retries or continuations, resume from the current workspace state. Check the existing branch,
+  git-operation state, and PR state before redoing work, and do not repeat already-completed steps
+  unless new changes require it.
 - Only stop early for a true blocker (missing required auth, permissions, or secrets that cannot
   be resolved in-session). If blocked, record what is missing and what action is needed to
   unblock in the progress comment, then move the issue status to "In Review" and stop.
 - When done, ensure all tests pass, push the branch, and open a PR with `gh pr create` linking
   the issue. Then move the issue's Status to "In Review" on the project board.
-{% if attempt %}
-This is retry/continuation attempt {{ attempt }}.
-- Resume from the current workspace state; do not restart from scratch.
-- Check existing branch/PR state with `gh` before redoing any work.
-- Do not repeat already-completed steps unless new changes require it.
-{% endif %}
