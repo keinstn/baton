@@ -71,7 +71,8 @@ Rules:
   you do not re-raise feedback that is already resolved in the current diff.
 - Every PR comment that this workflow creates must include a Baton reviewer marker plus a visible
   label:
-  - summary comment marker: `<!-- baton-reviewer-summary status=<pass|needs_changes> -->`
+  - summary comment marker:
+    `<!-- baton-reviewer-summary status=<pass|needs_changes> handoff_count=<0|1|2|3> -->`
   - finding comment marker: `<!-- baton-reviewer-finding id=<stable_id> -->`
   - visible prefix: `[Baton Reviewer]`
 - Every reviewer finding should also carry exactly one intent prefix after `[Baton Reviewer]`:
@@ -94,6 +95,12 @@ Rules:
   style-only, naming-preference, or minor-refactor comments unless they hide a real defect.
 - When leaving a finding, explain the concrete risk: what breaks, when it breaks, and why it
   matters.
+- Limit agent-only review loops. Track how many times this workflow has sent the issue back from
+  `Agent Review` to `In Progress` in the reviewer summary comment's `handoff_count` field.
+  - increment `handoff_count` each time this workflow returns the issue to `In Progress`
+  - once `handoff_count` reaches `3`, stop sending the issue back to `In Progress`
+  - after the third send-back, escalate by updating the reviewer summary and progress comment to
+    say the agent review loop limit was reached and move the issue to `In Review` for human review
 - If you find actionable issues:
   - post marker-tagged PR comments with concrete guidance; use inline comments when a code location
     matters
@@ -104,16 +111,20 @@ Rules:
     `<!-- baton-reviewer-summary status=` first; if found, edit it in place via
     `gh api repos/$BATON_ISSUE_REPO/issues/comments/<comment_id> --method PATCH -f body='...'`;
     if not found, post a new one with `gh pr comment $PR_NUMBER --repo $BATON_ISSUE_REPO --body '...'`.
-    The comment must contain `<!-- baton-reviewer-summary status=needs_changes -->` and a visible
-    `[Baton Reviewer]` prefix. Each finding comment should normally use `[must]`; use `[ask]`
-    instead when you need clarification before deciding whether the change is wrong, and use `[imo]`
-    sparingly for non-blocking advice.
+    The comment must contain `<!-- baton-reviewer-summary status=needs_changes handoff_count=<n> -->`
+    and a visible `[Baton Reviewer]` prefix. Each finding comment should normally use `[must]`;
+    use `[ask]` instead when you need clarification before deciding whether the change is wrong,
+    and use `[imo]` sparingly for non-blocking advice.
   - update the issue progress comment with `Role: Baton Reviewer` plus a concise summary of what
     the implementation workflow should address next
-  - move the issue status back to "In Progress" so the implementation workflow can resume
+  - if `handoff_count` is still below `3`, move the issue status back to "In Progress" so the
+    implementation workflow can resume
+  - if this finding set would make `handoff_count` exceed `3`, do not send the issue back again;
+    instead, say that the agent review loop limit was reached and move the issue to "In Review"
 - If you do not find actionable issues:
   - create or update exactly one reviewer summary comment using the same search-then-edit-or-create
-    pattern: `<!-- baton-reviewer-summary status=pass -->` and a visible `[Baton Reviewer]` prefix
+    pattern: `<!-- baton-reviewer-summary status=pass handoff_count=<n> -->` and a visible
+    `[Baton Reviewer]` prefix
   - update the issue progress comment with `Role: Baton Reviewer` and say the PR is ready for
     human review
   - move the issue status to "In Review"
