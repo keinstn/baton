@@ -111,8 +111,10 @@ const routes: Route[] = [
   {
     match: exact("/api/v1/state"),
     methods: ["GET", "HEAD"],
-    handle: ({ res, deps, method }) =>
-      sendJson(res, 200, deps.snapshot(), method === "HEAD"),
+    handle: ({ res, deps, method }) => {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      sendJson(res, 200, deps.snapshot(), method === "HEAD");
+    },
   },
   {
     match: exact("/api/v1/refresh"),

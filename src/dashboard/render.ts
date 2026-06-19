@@ -2,8 +2,16 @@ import { DASHBOARD_CSS } from "../observability/dashboard.js";
 import { he } from "../observability/http-util.js";
 import type { DashboardTarget } from "./config.js";
 
+/** Produce JSON safe for embedding inside a <script> block: escape <, >, &. */
+function scriptSafeJson(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026");
+}
+
 export function renderDashboardPage(targets: DashboardTarget[]): string {
-  const targetsJson = JSON.stringify(
+  const targetsJson = scriptSafeJson(
     targets.map((t) => ({ name: t.name, url: t.url })),
   );
 

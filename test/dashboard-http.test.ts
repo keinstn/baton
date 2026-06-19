@@ -74,4 +74,27 @@ describe("dashboard HTTP server", () => {
       await server.close();
     }
   });
+
+  it("script-safe TARGETS: </script> in name/URL does not break the script block", async () => {
+    const server = await startDashboardServer({
+      host: "127.0.0.1",
+      port: 0,
+      targets: [
+        {
+          name: "bad</script><script>alert(1)//",
+          url: "http://127.0.0.1:1234",
+        },
+      ],
+    });
+    try {
+      const res = await fetch(`http://127.0.0.1:${server.port}/`);
+      const body = await res.text();
+      // The raw </script> sequence must not appear inside the script block
+      expect(body).not.toContain("</script><script>");
+      // The data must still be embedded (as Unicode escapes)
+      expect(body).toContain("\\u003c/script\\u003e");
+    } finally {
+      await server.close();
+    }
+  });
 });
