@@ -113,9 +113,9 @@ Rules:
     `pulls/$PR_NUMBER/reviews`
   - paginate all list results; for top-level reviews, later `APPROVED` or `DISMISSED` reviews
     from the same reviewer supersede older requests or comments
-- If the issue status is "Rework", treat it as a full approach reset: close the existing PR,
-  create a fresh branch from origin/main, and restart implementation from scratch addressing
-  the review feedback. When done, open a new PR and move the issue status to "In Review".
+- If the issue status is "Rework", close the existing PR, reset the branch to origin/main, and
+  take a fresh implementation pass addressing the review feedback. When done, open a new PR and
+  move the issue status to "In Review".
 - Report progress by editing a single persistent comment on the issue. The comment must begin
   with the marker `<!-- baton-progress -->`. On each run, search existing comments for that
   marker first; if found, edit it in place; if not found, create it. Do not post multiple
