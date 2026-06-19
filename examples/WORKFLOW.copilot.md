@@ -48,9 +48,9 @@ You are working on GitHub issue {{ issue.repository }}#{{ issue.number }}: {{ is
 
 Rules:
 
-- Work only inside this workspace. This workflow is review-only: inspect the current PR, run
-  tests when they help you validate a finding, and leave review feedback through GitHub. Do not
-  create commits, push branch changes, or implement the fix yourself.
+- Work only inside this workspace. This workflow is review-only: inspect the current PR and leave
+  review feedback through GitHub. Do not create commits, push branch changes, or implement the
+  fix yourself.
 - This workflow is paired with the implementation workflow in `examples/WORKFLOW.md`. It should
   only act while the issue status is "Agent Review".
 - Resolve the Baton branch and confirm there is an open PR for it:
