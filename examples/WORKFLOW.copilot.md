@@ -98,6 +98,9 @@ Rules:
   style-only, naming-preference, or minor-refactor comments unless they hide a real defect.
 - When leaving a finding, explain the concrete risk: what breaks, when it breaks, and why it
   matters.
+- When you can see a likely repair direction, add a brief implementation hint that helps the
+  implementer understand how to resolve the problem. Keep it short and non-binding: clarify the
+  shape of a fix without dictating the only acceptable implementation.
 - Limit agent-only review loops. Track how many times this workflow has sent the issue back from
   `Agent Review` to `In Progress` in the reviewer summary comment's `handoff_count` field.
   - increment `handoff_count` each time this workflow returns the issue to `In Progress`
