@@ -20,14 +20,14 @@ hooks:
     BRANCH="agent/$BATON_ISSUE_IDENTIFIER"
     # Preserve existing workspace state for normal retries/continuations: keep
     # in-progress git operations and reuse a local branch when possible. Only
-    # Rework resets the branch back to origin/main.
+    # Rework resets the branch back to origin/HEAD.
     GIT_IN_PROGRESS=false
     if [ -f .git/MERGE_HEAD ] || [ -f .git/CHERRY_PICK_HEAD ] || \
        [ -d .git/rebase-merge ] || [ -d .git/rebase-apply ]; then
       GIT_IN_PROGRESS=true
     fi
     if [ "$BATON_ISSUE_STATUS" = "Rework" ]; then
-      git switch -C "$BRANCH" origin/main
+      git switch -C "$BRANCH" origin/HEAD
     elif [ "$GIT_IN_PROGRESS" = true ]; then
       :
     elif git show-ref --verify --quiet "refs/heads/$BRANCH"; then
@@ -36,7 +36,7 @@ hooks:
          gh pr list --repo "$BATON_ISSUE_REPO" --head "$BRANCH" --state open --json number --jq 'length > 0' | grep -q true; then
       git switch -c "$BRANCH" --track "origin/$BRANCH"
     else
-      git switch -C "$BRANCH" origin/main
+      git switch -C "$BRANCH" origin/HEAD
     fi
 agent:
   kind: claude_code
@@ -117,7 +117,7 @@ Rules:
     `pulls/$PR_NUMBER/reviews`
   - paginate all list results; for top-level reviews, later `APPROVED` or `DISMISSED` reviews
     from the same reviewer supersede older requests or comments
-- If the issue status is "Rework", close the existing PR, reset the branch to origin/main, and
+- If the issue status is "Rework", close the existing PR, reset the branch to origin/HEAD, and
   take a fresh implementation pass addressing the review feedback. When done, open a new PR and
   move the issue status to the chosen review state.
 - Report progress by editing a single persistent comment on the issue. The comment must begin
