@@ -56,8 +56,10 @@ Rules:
   "In Progress" on the project board before starting work.
 - If the issue status is "Todo" and an open PR already exists for this branch, move the issue
   to "In Progress" on the project board, then treat it as a feedback loop: review all open PR
-  comments — both general conversation comments (fetch them with
-  `gh api repos/$BATON_ISSUE_REPO/issues/<n>/comments`) and inline review-thread comments (fetch
+  comments — general conversation comments (fetch them with
+  `gh api repos/$BATON_ISSUE_REPO/issues/<n>/comments`), top-level PR reviews including
+  REQUEST_CHANGES and COMMENT reviews (fetch them with
+  `gh api repos/$BATON_ISSUE_REPO/pulls/<n>/reviews`), and inline review-thread comments (fetch
   them with `gh api repos/$BATON_ISSUE_REPO/pulls/<n>/comments`) — and address each one (code
   changes or explicit, justified pushback). Reply to each review-thread comment describing how
   you addressed it
