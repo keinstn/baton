@@ -153,9 +153,26 @@ Rules:
   human reviewer resolves it later.
 - Report progress by editing a single persistent comment on the issue. The comment must begin
   with the marker `<!-- baton-progress -->`. On each run, search existing comments for that
-  marker first; if found, edit it in place; if not found, create it. Include `Role: Baton Reviewer`
-  in the body so shared-account operators can tell whether the latest update came from the reviewer
-  workflow or the implementation workflow. Do not post multiple separate comments.
+  marker first; if found, edit it in place; if not found, create it. Do not post multiple
+  separate comments. The comment body has two sections:
+  1. **Summary section** (overwrite on every run): `Role:` and `Status:` lines immediately after
+     the marker, giving the current state at a glance. `Role:` must be `Baton Reviewer`.
+  2. **Log section** (append-only): a `<!-- baton-log -->` block within the same comment. On
+     every run, prepend one new line in the format `<ISO8601 timestamp> | <Role> | <summary>`
+     so the full round-trip history is preserved. If the existing comment has no
+     `<!-- baton-log -->` block (e.g. it predates this format), append the block rather than
+     failing.
+
+  Example comment format:
+  ```
+  <!-- baton-progress -->
+  Role: Baton Reviewer
+  Status: needs_changes — missing edge case in retry logic
+
+  <!-- baton-log -->
+  2026-06-20T10:30Z | Baton Reviewer | needs_changes — missing edge case in retry logic
+  2026-06-20T09:10Z | Baton Implementer | pr-opened — PR #42
+  ```
 - Only stop early for a true blocker (missing required auth, permissions, or secrets that cannot
   be resolved in-session). If blocked, record what is missing and what action is needed to
   unblock in the progress comment, include `Role: Baton Reviewer`, create or update the reviewer

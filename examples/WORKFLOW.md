@@ -125,10 +125,26 @@ Rules:
   from the reviewer workflow.
 - Report progress by editing a single persistent comment on the issue. The comment must begin
   with the marker `<!-- baton-progress -->`. On each run, search existing comments for that
-  marker first; if found, edit it in place; if not found, create it. Include
-  `Role: Baton Implementer` in the body so shared-account operators can tell whether the latest
-  update came from the implementation workflow or the reviewer workflow. Do not post multiple
-  separate comments.
+  marker first; if found, edit it in place; if not found, create it. Do not post multiple
+  separate comments. The comment body has two sections:
+  1. **Summary section** (overwrite on every run): `Role:` and `Status:` lines immediately after
+     the marker, giving the current state at a glance. `Role:` must be `Baton Implementer`.
+  2. **Log section** (append-only): a `<!-- baton-log -->` block within the same comment. On
+     every run, prepend one new line in the format `<ISO8601 timestamp> | <Role> | <summary>`
+     so the full round-trip history is preserved. If the existing comment has no
+     `<!-- baton-log -->` block (e.g. it predates this format), append the block rather than
+     failing.
+
+  Example comment format:
+  ```
+  <!-- baton-progress -->
+  Role: Baton Implementer
+  Status: in-progress — implementing validation logic
+
+  <!-- baton-log -->
+  2026-06-20T09:10Z | Baton Implementer | pr-opened — PR #42
+  2026-06-20T08:45Z | Baton Implementer | in-progress — implementing validation logic
+  ```
 - On retries or continuations, resume from the current workspace state. Check the existing branch,
   git-operation state, and PR state before redoing work, and do not repeat already-completed steps
   unless new changes require it.
