@@ -59,6 +59,19 @@ export class WorkspaceManager {
     return p;
   }
 
+  private runHook(
+    script: string,
+    issue: Issue,
+    workspacePath: string,
+  ): ReturnType<typeof runHookScript> {
+    return runHookScript(script, {
+      cwd: workspacePath,
+      env: this.hookEnv(issue, workspacePath),
+      timeoutMs: this.config.hooks.timeoutMs,
+      treeKiller: this.platform.treeKiller,
+    });
+  }
+
   hookEnv(issue: Issue, workspacePath: string): Record<string, string> {
     const native = this.platform.nativePath(workspacePath);
     return {
@@ -82,12 +95,11 @@ export class WorkspaceManager {
     if (!this.config.hooks.afterCreate) return;
 
     log.info("running after_create hook", { workspace: workspacePath });
-    const result = await runHookScript(this.config.hooks.afterCreate, {
-      cwd: workspacePath,
-      env: this.hookEnv(issue, workspacePath),
-      timeoutMs: this.config.hooks.timeoutMs,
-      treeKiller: this.platform.treeKiller,
-    });
+    const result = await this.runHook(
+      this.config.hooks.afterCreate,
+      issue,
+      workspacePath,
+    );
     if (result.ok) return;
 
     // SPEC §9.4: after_create failure is fatal to workspace creation;
@@ -139,12 +151,11 @@ export class WorkspaceManager {
   /** before_run: failure aborts the current attempt (SPEC §9.4). */
   async runBeforeRun(issue: Issue, workspacePath: string): Promise<void> {
     if (!this.config.hooks.beforeRun) return;
-    const result = await runHookScript(this.config.hooks.beforeRun, {
-      cwd: workspacePath,
-      env: this.hookEnv(issue, workspacePath),
-      timeoutMs: this.config.hooks.timeoutMs,
-      treeKiller: this.platform.treeKiller,
-    });
+    const result = await this.runHook(
+      this.config.hooks.beforeRun,
+      issue,
+      workspacePath,
+    );
     if (!result.ok) {
       throw new BatonError(
         "hook_failed",
@@ -156,12 +167,11 @@ export class WorkspaceManager {
   /** after_run: failure is logged and ignored (SPEC §9.4). */
   async runAfterRun(issue: Issue, workspacePath: string): Promise<void> {
     if (!this.config.hooks.afterRun) return;
-    const result = await runHookScript(this.config.hooks.afterRun, {
-      cwd: workspacePath,
-      env: this.hookEnv(issue, workspacePath),
-      timeoutMs: this.config.hooks.timeoutMs,
-      treeKiller: this.platform.treeKiller,
-    });
+    const result = await this.runHook(
+      this.config.hooks.afterRun,
+      issue,
+      workspacePath,
+    );
     if (!result.ok) {
       this.logger.warn("after_run hook failed (ignored)", {
         issue_identifier: issue.identifier,
@@ -182,12 +192,11 @@ export class WorkspaceManager {
     }
     if (!exists) return;
     if (this.config.hooks.beforeRemove) {
-      const result = await runHookScript(this.config.hooks.beforeRemove, {
-        cwd: workspacePath,
-        env: this.hookEnv(issue, workspacePath),
-        timeoutMs: this.config.hooks.timeoutMs,
-        treeKiller: this.platform.treeKiller,
-      });
+      const result = await this.runHook(
+        this.config.hooks.beforeRemove,
+        issue,
+        workspacePath,
+      );
       if (!result.ok) {
         this.logger.warn("before_remove hook failed (ignored)", {
           issue_identifier: issue.identifier,
