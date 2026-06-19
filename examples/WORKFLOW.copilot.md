@@ -78,8 +78,17 @@ Rules:
   they were posted by the same GitHub account. Do not edit, replace, or classify unmarked comments
   as this workflow's own output.
 - Focus on actionable review findings: correctness bugs, missing edge cases, regressions,
-  dangerous migrations, broken tests, and mismatches between the issue and the implementation.
-  Avoid speculative or style-only comments.
+  dangerous migrations, broken tests, mismatches between the issue and the implementation,
+  backward-compatibility risks, failure-mode gaps, security problems, and operational risk.
+- Check both the intended behavior and the safety of the change:
+  - verify the implementation matches the issue, PR description, and any explicit design intent
+  - look for regressions in existing APIs, configuration, data flows, and operator workflows
+  - inspect boundary conditions and failure paths, not just the happy path
+  - call out risky permissions, secret exposure, destructive commands, or unsafe automation
+- Prefer fewer, high-confidence findings over many low-signal comments. Avoid speculative,
+  style-only, naming-preference, or minor-refactor comments unless they hide a real defect.
+- When leaving a finding, explain the concrete risk: what breaks, when it breaks, and why it
+  matters.
 - If you find actionable issues:
   - post marker-tagged PR comments with concrete guidance; use inline comments when a code location
     matters
