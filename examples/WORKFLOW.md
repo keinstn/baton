@@ -58,14 +58,18 @@ Rules:
   open PR number (`PR_NUMBER=$(gh pr view --json number --jq '.number')`). Build the actionable
   feedback set for that PR from: general PR conversation comments
   (`gh api --paginate repos/$BATON_ISSUE_REPO/issues/$PR_NUMBER/comments`) excluding your own
-  comments and replies; unresolved inline review threads only, fetched with `gh api graphql`
-  from `repository.pullRequest.reviewThreads`; and top-level review summaries from
+  comments and replies; unresolved inline review threads only via `gh api graphql` — split
+  `$BATON_ISSUE_REPO` into owner/repo (`GH_OWNER=${BATON_ISSUE_REPO%%/*}`,
+  `GH_REPO=${BATON_ISSUE_REPO##*/}`), query
+  `repository(owner,name).pullRequest(number:$PR_NUMBER).reviewThreads(first:100)` with fields
+  `{isResolved, id, comments(first:10){nodes{databaseId, body, author{login}}}}`, and filter to
+  `isResolved: false`; and top-level review summaries from
   `gh api --paginate repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/reviews`, reduced to the latest
   non-empty `COMMENTED` or `CHANGES_REQUESTED` body from each reviewer. Do not re-process
   resolved threads or superseded review summaries. Address each actionable item (code changes or
   explicit, justified pushback). Reply to the last comment in each unresolved thread describing
-  how you addressed it
-  (`gh api repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/comments/<comment_id>/replies -f body=...`);
+  how you addressed it, using that comment's `databaseId`
+  (`gh api repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/comments/<databaseId>/replies -f body=...`);
   do not resolve the threads. When all feedback is resolved, push the branch and move the issue
   status back to "In Review".
 - If the issue status is "Rework", treat it as a full approach reset: close the existing PR,
