@@ -55,16 +55,16 @@ Rules:
   "In Progress" on the project board before starting work.
 - If the issue status is "Todo" and an open PR already exists for this branch, move the issue
   to "In Progress" on the project board, then treat it as a feedback loop. First resolve the
-  open PR number (`PR_NUMBER=$(gh pr view --json number --jq '.number')`), then fetch all
-  feedback using that number: general conversation comments
-  (`gh api --paginate repos/$BATON_ISSUE_REPO/issues/$PR_NUMBER/comments`), top-level PR reviews
-  filtered to non-empty CHANGES_REQUESTED or COMMENTED bodies whose `commit_id` matches
-  the current head SHA (`git rev-parse HEAD`)
-  (`gh api --paginate repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/reviews`), and unresolved
-  inline review threads only
-  (`gh pr view $PR_NUMBER --json reviewThreads --jq '[.reviewThreads[] | select(.isResolved == false)]'`).
-  Address each item (code changes or explicit, justified pushback). Reply to each unresolved
-  thread's last comment describing how you addressed it
+  open PR number (`PR_NUMBER=$(gh pr view --json number --jq '.number')`). Build the actionable
+  feedback set for that PR from: general PR conversation comments
+  (`gh api --paginate repos/$BATON_ISSUE_REPO/issues/$PR_NUMBER/comments`) excluding your own
+  comments and replies; unresolved inline review threads only, fetched with `gh api graphql`
+  from `repository.pullRequest.reviewThreads`; and top-level review summaries from
+  `gh api --paginate repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/reviews`, reduced to the latest
+  non-empty `COMMENTED` or `CHANGES_REQUESTED` body from each reviewer. Do not re-process
+  resolved threads or superseded review summaries. Address each actionable item (code changes or
+  explicit, justified pushback). Reply to the last comment in each unresolved thread describing
+  how you addressed it
   (`gh api repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/comments/<comment_id>/replies -f body=...`);
   do not resolve the threads. When all feedback is resolved, push the branch and move the issue
   status back to "In Review".
