@@ -57,9 +57,8 @@ Rules:
   to "In Progress" on the project board and treat the run as a feedback loop. Resolve the open
   PR number (`PR_NUMBER=$(gh pr view --json number --jq '.number')`), collect the current
   actionable feedback set for that PR, address each item (code
-  changes or explicit, justified pushback). When replying in PR conversation or unresolved review
-  threads, include the `<!-- baton-agent-reply -->` marker in every agent response. For each
-  unresolved review thread, treat the latest reviewer comment that does not already have a later
+  changes or explicit, justified pushback). For each unresolved review thread, treat the latest
+  reviewer comment that does not already have a later
   `<!-- baton-agent-reply -->` reply in the same thread as the item to address, and post the
   reply using the thread's root review comment `databaseId`
   (`gh api repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/comments/<root_databaseId>/replies -f body='<!-- baton-agent-reply --> ...'`);
