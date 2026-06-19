@@ -22,7 +22,7 @@ hooks:
       git switch -C "$BRANCH" origin/main
     elif git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null 2>&1 && \
          gh pr list --repo "$BATON_ISSUE_REPO" --head "$BRANCH" --state open --json number --jq 'length > 0' | grep -q true; then
-      git switch "$BRANCH"
+      git switch -C "$BRANCH" "origin/$BRANCH"
     else
       git switch -C "$BRANCH" origin/main
     fi
@@ -57,8 +57,11 @@ Rules:
   run as a feedback loop. If the issue status is "Todo", move it to "In Progress" on the project
   board before starting. Resolve the open PR number and base branch
   (`PR_NUMBER=$(gh pr view --json number --jq '.number')`,
-  `BASE_BRANCH=$(gh pr view --json baseRefName --jq '.baseRefName')`). Before addressing
-  feedback, integrate the current PR base so the branch does not stay stuck on conflicts: run
+  `BASE_BRANCH=$(gh pr view --json baseRefName --jq '.baseRefName')`). Before starting a new base
+  merge, check whether the workspace is already in the middle of a merge, rebase, or cherry-pick
+  from a prior attempt. If so, inspect the current state and either finish that in-progress
+  operation or abort it intentionally before continuing; do not start a second merge on top of an
+  unfinished one. After the branch state is clean, integrate the current PR base with
   `git merge --no-edit "origin/$BASE_BRANCH"`. If it merges cleanly (or is already up to date),
   continue. If it reports conflicts, resolve each unmerged path by hand based on the intent of
   both sides — do not blindly `--ours`/`--theirs` the whole file — then run the project's tests,
