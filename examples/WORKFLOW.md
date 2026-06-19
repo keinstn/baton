@@ -56,9 +56,10 @@ Rules:
 - If the issue status is "Todo" and an open PR already exists for this branch, move the issue
   to "In Progress" on the project board and treat the run as a feedback loop. Resolve the open
   PR number, collect the current actionable feedback set for that PR, address each item (code
-  changes or explicit, justified pushback), reply to the last comment in each unresolved review
-  thread describing how you addressed it, using that comment's `databaseId`
-  (`gh api repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/comments/<databaseId>/replies -f body=...`);
+  changes or explicit, justified pushback), and for each unresolved review thread read the latest
+  comment for the most recent feedback but reply using the thread's root review comment
+  `databaseId`
+  (`gh api repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/comments/<root_databaseId>/replies -f body=...`);
   do not resolve the threads. When all feedback is resolved, push the branch and move the issue
   status back to "In Review".
 - Actionable feedback means: PR conversation comments on
