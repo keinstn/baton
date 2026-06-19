@@ -61,14 +61,16 @@ Rules:
   comments and replies; unresolved inline review threads only via `gh api graphql` — split
   `$BATON_ISSUE_REPO` into owner/repo (`GH_OWNER=${BATON_ISSUE_REPO%%/*}`,
   `GH_REPO=${BATON_ISSUE_REPO##*/}`), query
-  `repository(owner,name).pullRequest(number:$PR_NUMBER).reviewThreads(first:100)` with fields
-  `{isResolved, id, comments(first:10){nodes{databaseId, body, author{login}}}}`, and filter to
-  `isResolved: false`; and top-level review summaries from
-  `gh api --paginate repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/reviews`, reduced to the latest
-  non-empty `COMMENTED` or `CHANGES_REQUESTED` body from each reviewer. Do not re-process
-  resolved threads or superseded review summaries. Address each actionable item (code changes or
-  explicit, justified pushback). Reply to the last comment in each unresolved thread describing
-  how you addressed it, using that comment's `databaseId`
+  `repository(owner,name).pullRequest(number:$PR_NUMBER).reviewThreads`, and paginate through all
+  `reviewThreads` pages and each thread's `comments` pages before deciding which unresolved
+  threads are actionable and which `databaseId` is the last comment to reply to; and top-level
+  review summaries from `gh api --paginate repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/reviews`,
+  reduced by reviewer using each reviewer's latest review state first: if the latest review is
+  `APPROVED` or `DISMISSED`, treat older summaries from that reviewer as superseded; if the latest
+  review is `COMMENTED` or `CHANGES_REQUESTED`, keep that reviewer's latest non-empty summary as
+  actionable. Do not re-process resolved threads or superseded review summaries. Address each
+  actionable item (code changes or explicit, justified pushback). Reply to the last comment in
+  each unresolved thread describing how you addressed it, using that comment's `databaseId`
   (`gh api repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/comments/<databaseId>/replies -f body=...`);
   do not resolve the threads. When all feedback is resolved, push the branch and move the issue
   status back to "In Review".
