@@ -69,8 +69,9 @@ Rules:
     replies
   - unresolved inline review threads, fetched via `gh api graphql` — split `$BATON_ISSUE_REPO`
     into owner/repo (`GH_OWNER=${BATON_ISSUE_REPO%%/*}`, `GH_REPO=${BATON_ISSUE_REPO##*/}`) and
-    request fields `{isResolved, id, comments(first:10){nodes{databaseId, body}}}` so you can
-    ignore comments containing the `<!-- baton-agent-reply -->` marker
+    request fields for the thread root comment and thread comments, paginating thread comments as
+    needed until you can identify the latest comment without the `<!-- baton-agent-reply -->`
+    marker
   - the latest still-actionable top-level review summary per reviewer from
     `pulls/$PR_NUMBER/reviews`
   - paginate all list results; for top-level reviews, later `APPROVED` or `DISMISSED` reviews
