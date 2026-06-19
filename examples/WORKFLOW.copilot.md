@@ -55,7 +55,8 @@ Rules:
   "In Progress" on the project board before starting work.
 - If the issue status is "Todo" and an open PR already exists for this branch, move the issue
   to "In Progress" on the project board and treat the run as a feedback loop. Resolve the open
-  PR number, collect the current actionable feedback set for that PR, address each item (code
+  PR number (`PR_NUMBER=$(gh pr view --json number --jq '.number')`), collect the current
+  actionable feedback set for that PR, address each item (code
   changes or explicit, justified pushback), and for each unresolved review thread read the latest
   comment for the most recent feedback but reply using the thread's root review comment
   `databaseId`
@@ -66,9 +67,12 @@ Rules:
   `issues/$PR_NUMBER/comments`, excluding your own comments and replies; unresolved inline review
   threads, fetched via `gh api graphql`; and the latest still-actionable top-level review summary
   per reviewer from `pulls/$PR_NUMBER/reviews`.
-- When collecting feedback, paginate all list results. For top-level reviews, use each reviewer's
-  latest review state to decide whether an older summary is still actionable; later `APPROVED` or
-  `DISMISSED` reviews supersede older requests or comments.
+- When collecting feedback, paginate all list results. For GraphQL thread fetches, split
+  `$BATON_ISSUE_REPO` into owner/repo (`GH_OWNER=${BATON_ISSUE_REPO%%/*}`,
+  `GH_REPO=${BATON_ISSUE_REPO##*/}`) and request fields
+  `{isResolved, id, comments(first:10){nodes{databaseId, body, author{login}}}}`. For top-level
+  reviews, use each reviewer's latest review state to decide whether an older summary is still
+  actionable; later `APPROVED` or `DISMISSED` reviews supersede older requests or comments.
 - If the issue status is "Rework", treat it as a full approach reset: close the existing PR,
   create a fresh branch from origin/main, and restart implementation from scratch addressing
   the review feedback. When done, open a new PR and move the issue status to "In Review".
