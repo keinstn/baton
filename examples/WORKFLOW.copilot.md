@@ -54,13 +54,32 @@ Rules:
 - If the issue status is "Todo" and no open PR exists for this branch, move the issue to
   "In Progress" on the project board before starting work.
 - If the issue status is "Todo" and an open PR already exists for this branch, move the issue
-  to "In Progress" on the project board, then treat it as a feedback loop: review all open PR
-  comments, including inline review-thread comments (fetch them with
-  `gh api repos/$BATON_ISSUE_REPO/pulls/<n>/comments`), and address each one (code changes or
-  explicit, justified pushback). Reply to each review-thread comment describing how you addressed
-  it (`gh api repos/$BATON_ISSUE_REPO/pulls/<n>/comments/<comment_id>/replies -f body=...`); do
-  not resolve the threads. When all feedback is resolved, push the branch and move the issue
+  to "In Progress" on the project board and treat the run as a feedback loop. Resolve the open
+  PR number (`PR_NUMBER=$(gh pr view --json number --jq '.number')`), collect the current
+  actionable feedback set for that PR, address each item (code changes or explicit, justified
+  pushback). For PR conversation feedback, post any agent follow-up as a later PR comment with a
+  marker of the form `<!-- baton-agent-reply source_comment_id=<comment_id> -->` so Baton can
+  tell which conversation comment has already been handled. For each unresolved review thread,
+  treat the latest reviewer comment that does not already have a later
+  `<!-- baton-agent-reply -->` reply in the same thread as the item to address, and post the
+  reply using the first comment in the thread (`databaseId` of `comments.nodes[0]`)
+  (`gh api repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/comments/<root_databaseId>/replies -f body='<!-- baton-agent-reply --> ...'`);
+  do not resolve the threads. When all feedback is resolved, push the branch and move the issue
   status back to "In Review".
+- Actionable feedback means:
+  - PR conversation comments on `issues/$PR_NUMBER/comments` that do not themselves contain
+    `<!-- baton-agent-reply source_comment_id=<comment_id> -->` and do not already have a later
+    agent follow-up comment containing that marker for that comment's ID
+  - unresolved inline review threads, fetched via `gh api graphql` — split `$BATON_ISSUE_REPO`
+    into owner/repo (`GH_OWNER=${BATON_ISSUE_REPO%%/*}`, `GH_REPO=${BATON_ISSUE_REPO##*/}`) and
+    request fields for `reviewThreads` and `comments(first:10)` including pagination metadata
+    (`pageInfo { hasNextPage endCursor }`), then paginate review threads and thread comments
+    further as needed until you can identify the latest reviewer comment that does not already
+    have a later `<!-- baton-agent-reply -->` reply in the same thread
+  - the latest still-actionable top-level review summary per reviewer from
+    `pulls/$PR_NUMBER/reviews`
+  - paginate all list results; for top-level reviews, later `APPROVED` or `DISMISSED` reviews
+    from the same reviewer supersede older requests or comments
 - If the issue status is "Rework", treat it as a full approach reset: close the existing PR,
   create a fresh branch from origin/main, and restart implementation from scratch addressing
   the review feedback. When done, open a new PR and move the issue status to "In Review".
