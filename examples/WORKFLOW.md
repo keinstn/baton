@@ -63,16 +63,16 @@ Rules:
   (`gh api repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/comments/<root_databaseId>/replies -f body=...`);
   do not resolve the threads. When all feedback is resolved, push the branch and move the issue
   status back to "In Review".
-- Actionable feedback means: PR conversation comments on
-  `issues/$PR_NUMBER/comments`, excluding your own comments and replies; unresolved inline review
-  threads, fetched via `gh api graphql`; and the latest still-actionable top-level review summary
-  per reviewer from `pulls/$PR_NUMBER/reviews`.
-- When collecting feedback, paginate all list results. For GraphQL thread fetches, split
-  `$BATON_ISSUE_REPO` into owner/repo (`GH_OWNER=${BATON_ISSUE_REPO%%/*}`,
-  `GH_REPO=${BATON_ISSUE_REPO##*/}`) and request fields
-  `{isResolved, id, comments(first:10){nodes{databaseId, body, author{login}}}}`. For top-level
-  reviews, use each reviewer's latest review state to decide whether an older summary is still
-  actionable; later `APPROVED` or `DISMISSED` reviews supersede older requests or comments.
+- Actionable feedback means:
+  - PR conversation comments on `issues/$PR_NUMBER/comments`, excluding your own comments and
+    replies
+  - unresolved inline review threads, fetched via `gh api graphql` — split `$BATON_ISSUE_REPO`
+    into owner/repo (`GH_OWNER=${BATON_ISSUE_REPO%%/*}`, `GH_REPO=${BATON_ISSUE_REPO##*/}`) and
+    request fields `{isResolved, id, comments(first:10){nodes{databaseId, body, author{login}}}}`
+  - the latest still-actionable top-level review summary per reviewer from
+    `pulls/$PR_NUMBER/reviews`
+  - paginate all list results; for top-level reviews, later `APPROVED` or `DISMISSED` reviews
+    from the same reviewer supersede older requests or comments
 - If the issue status is "Rework", treat it as a full approach reset: close the existing PR,
   create a fresh branch from origin/main, and restart implementation from scratch addressing
   the review feedback. When done, open a new PR and move the issue status to "In Review".
