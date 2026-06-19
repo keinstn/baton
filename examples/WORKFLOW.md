@@ -67,7 +67,8 @@ Rules:
   choose the destination for this run:
   - if `Agent Review` exists, use `Agent Review`
   - otherwise use `In Review`
-  - be consistent within the run and move the issue to the same chosen review state everywhere
+  - be consistent within the run and move the issue to the same chosen review state everywhere,
+    except for true blockers, which should always move to `In Review`
 - If the issue status is "Todo" and no open PR exists for this branch, move the issue to
   "In Progress" on the project board before starting work.
 - If an open PR already exists for this branch and the issue status is not "Rework", treat the
