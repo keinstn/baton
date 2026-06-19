@@ -23,7 +23,6 @@ hooks:
     elif git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null 2>&1 && \
          gh pr list --repo "$BATON_ISSUE_REPO" --head "$BRANCH" --state open --json number --jq 'length > 0' | grep -q true; then
       git switch "$BRANCH"
-      git merge origin/main; [ $? -le 1 ]
     else
       git switch -C "$BRANCH" origin/main
     fi
