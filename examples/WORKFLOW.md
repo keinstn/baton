@@ -65,8 +65,9 @@ Rules:
 - If an open PR already exists for this branch and the issue status is not "Rework", treat the
   run as a feedback loop. If the issue status is "Todo", move it to "In Progress" on the project
   board before starting. Resolve the open PR number and base branch
-  (`PR_NUMBER=$(gh pr view --json number --jq '.number')`,
-  `BASE_BRANCH=$(gh pr view --json baseRefName --jq '.baseRefName')`). Before starting a new base
+  (`BRANCH="agent/$BATON_ISSUE_IDENTIFIER"`,
+  `PR_NUMBER=$(gh pr view "$BRANCH" --repo "$BATON_ISSUE_REPO" --json number --jq '.number')`,
+  `BASE_BRANCH=$(gh pr view "$BRANCH" --repo "$BATON_ISSUE_REPO" --json baseRefName --jq '.baseRefName')`). Before starting a new base
   merge, check whether the workspace is already in the middle of a merge, rebase, or cherry-pick
   from a prior attempt. If so, inspect the current state and either finish that in-progress
   operation or abort it intentionally before continuing; do not start a second merge on top of an
