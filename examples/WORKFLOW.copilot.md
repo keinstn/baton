@@ -45,8 +45,9 @@ copilot:
     # rejects every subcommand (pr, api, issue…), producing tool_failed: unknown.
     - "shell(gh:*)"    # gh pr diff/view/checks/api/comment/issue
     - "shell(git:*)"   # git fetch/switch/log/ls-remote (before_run hook + review)
-    - read_file        # read local file contents for review context
-    - search_files     # search through repository code
+    # All review content is accessed via gh commands above; bare read_file/search_files
+    # do not match Copilot's server-qualified MCP permission format and cause
+    # tool_failed: unknown — omit them rather than risk a permission loop.
 ---
 
 You are working on GitHub issue {{ issue.repository }}#{{ issue.number }}: {{ issue.title }}.
