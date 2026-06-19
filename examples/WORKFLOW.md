@@ -18,6 +18,9 @@ hooks:
   before_run: |
     git fetch origin
     BRANCH="agent/$BATON_ISSUE_IDENTIFIER"
+    # Preserve existing workspace state for normal retries/continuations: keep
+    # in-progress git operations and reuse a local branch when possible. Only
+    # Rework resets the branch back to origin/main.
     GIT_IN_PROGRESS=false
     if [ -f .git/MERGE_HEAD ] || [ -f .git/CHERRY_PICK_HEAD ] || \
        [ -d .git/rebase-merge ] || [ -d .git/rebase-apply ]; then
