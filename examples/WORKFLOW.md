@@ -23,7 +23,7 @@ hooks:
     elif git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null 2>&1 && \
          gh pr list --repo "$BATON_ISSUE_REPO" --head "$BRANCH" --state open --json number --jq 'length > 0' | grep -q true; then
       git switch "$BRANCH"
-      git merge origin/main || true
+      git merge origin/main; [ $? -le 1 ]
     else
       git switch -C "$BRANCH" origin/main
     fi
@@ -57,10 +57,11 @@ Rules:
 - If the issue status is "Todo" and an open PR already exists for this branch, move the issue
   to "In Progress" on the project board, then treat it as a feedback loop: review all open PR
   comments — general conversation comments (fetch them with
-  `gh api repos/$BATON_ISSUE_REPO/issues/<n>/comments`), top-level PR reviews including
-  REQUEST_CHANGES and COMMENT reviews (fetch them with
-  `gh api repos/$BATON_ISSUE_REPO/pulls/<n>/reviews`), and inline review-thread comments (fetch
-  them with `gh api repos/$BATON_ISSUE_REPO/pulls/<n>/comments`) — and address each one (code
+  `gh api --paginate repos/$BATON_ISSUE_REPO/issues/<n>/comments`), top-level PR reviews
+  including REQUEST_CHANGES and COMMENT reviews (fetch them with
+  `gh api --paginate repos/$BATON_ISSUE_REPO/pulls/<n>/reviews`), and inline review-thread
+  comments (fetch them with
+  `gh api --paginate repos/$BATON_ISSUE_REPO/pulls/<n>/comments`) — and address each one (code
   changes or explicit, justified pushback). Reply to each review-thread comment describing how
   you addressed it
   (`gh api repos/$BATON_ISSUE_REPO/pulls/<n>/comments/<comment_id>/replies -f body=...`); do
