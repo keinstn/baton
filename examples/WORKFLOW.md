@@ -65,8 +65,8 @@ Rules:
   `git merge --no-edit "origin/$BASE_BRANCH"`. If it merges cleanly (or is already up to date),
   continue. If it reports conflicts, resolve each unmerged path by hand based on the intent of
   both sides — do not blindly `--ours`/`--theirs` the whole file — then run the project's tests,
-  commit the merge, and continue. Reflect the merge with a normal `git push` (never force-push).
-  Then collect the current actionable feedback set for that PR, address each item (code changes
+  commit the merge, and continue. Then collect the current actionable feedback set for that PR,
+  address each item (code changes
   or explicit, justified pushback). For PR conversation feedback, post any agent follow-up as a
   later PR comment with a marker of the form
   `<!-- baton-agent-reply source_comment_id=<comment_id> -->` so Baton can tell which
@@ -75,8 +75,9 @@ Rules:
   in the same thread as the item to address, and post the reply using the first comment in the
   thread (`databaseId` of `comments.nodes[0]`)
   (`gh api repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/comments/<root_databaseId>/replies -f body='<!-- baton-agent-reply --> ...'`);
-  do not resolve the threads. When all feedback is resolved, push the branch and move the issue
-  status back to "In Review".
+  do not resolve the threads. When all feedback is resolved, push the branch with a normal
+  `git push` (never force-push; this single push carries both any merge commit and your feedback
+  changes) and move the issue status back to "In Review".
 - Actionable feedback means:
   - PR conversation comments on `issues/$PR_NUMBER/comments` that do not themselves contain
     `<!-- baton-agent-reply source_comment_id=<comment_id> -->` and do not already have a later
@@ -105,7 +106,8 @@ Rules:
   the issue. Then move the issue's Status to "In Review" on the project board.
 {% if attempt %}
 This is retry/continuation attempt {{ attempt }}.
-- Resume from the current workspace state; do not restart from scratch.
+- Resume from the remote branch state (the before_run hook has already synced the local branch
+  to origin); do not restart from scratch.
 - Check existing branch/PR state with `gh` before redoing any work.
 - Do not repeat already-completed steps unless new changes require it.
 {% endif %}
