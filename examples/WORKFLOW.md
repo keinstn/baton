@@ -57,16 +57,17 @@ Rules:
   to "In Progress" on the project board and treat the run as a feedback loop. Resolve the open
   PR number (`PR_NUMBER=$(gh pr view --json number --jq '.number')`), collect the current
   actionable feedback set for that PR, address each item (code
-  changes or explicit, justified pushback), and for each unresolved review thread treat the
-  actionable feedback as the latest reviewer comment that does not already have a later
-  `<!-- baton-agent-reply -->` reply in the same thread. When replying, include that marker in
-  every agent reply and post the reply using the thread's root review comment `databaseId`
+  changes or explicit, justified pushback). When replying in PR conversation or unresolved review
+  threads, include the `<!-- baton-agent-reply -->` marker in every agent response. For each
+  unresolved review thread, treat the actionable feedback as the latest reviewer comment that does
+  not already have a later `<!-- baton-agent-reply -->` reply in the same thread, and post the
+  reply using the thread's root review comment `databaseId`
   (`gh api repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/comments/<root_databaseId>/replies -f body='<!-- baton-agent-reply --> ...'`);
   do not resolve the threads. When all feedback is resolved, push the branch and move the issue
   status back to "In Review".
 - Actionable feedback means:
-  - PR conversation comments on `issues/$PR_NUMBER/comments`, excluding your own comments and
-    replies
+  - PR conversation comments on `issues/$PR_NUMBER/comments`, excluding comments that already
+    contain the `<!-- baton-agent-reply -->` marker
   - unresolved inline review threads, fetched via `gh api graphql` — split `$BATON_ISSUE_REPO`
     into owner/repo (`GH_OWNER=${BATON_ISSUE_REPO%%/*}`, `GH_REPO=${BATON_ISSUE_REPO##*/}`) and
     request fields for `reviewThreads` and `comments(first:10)` including pagination metadata
