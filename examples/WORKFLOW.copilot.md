@@ -59,8 +59,8 @@ Rules:
   actionable feedback set for that PR, address each item (code
   changes or explicit, justified pushback). When replying in PR conversation or unresolved review
   threads, include the `<!-- baton-agent-reply -->` marker in every agent response. For each
-  unresolved review thread, treat the actionable feedback as the latest reviewer comment that does
-  not already have a later `<!-- baton-agent-reply -->` reply in the same thread, and post the
+  unresolved review thread, treat the latest reviewer comment that does not already have a later
+  `<!-- baton-agent-reply -->` reply in the same thread as the item to address, and post the
   reply using the thread's root review comment `databaseId`
   (`gh api repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/comments/<root_databaseId>/replies -f body='<!-- baton-agent-reply --> ...'`);
   do not resolve the threads. When all feedback is resolved, push the branch and move the issue
