@@ -26,7 +26,6 @@ hooks:
     if git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null 2>&1 && \
        gh pr list --repo "$BATON_ISSUE_REPO" --head "$BRANCH" --state open --json number --jq 'length > 0' | grep -q true; then
       git switch -C "$BRANCH" --track "origin/$BRANCH"
-      git reset --hard "origin/$BRANCH"
     else
       git switch --detach origin/main
     fi
@@ -65,9 +64,8 @@ Rules:
   `OPEN_PR_COUNT=$(gh pr list --repo "$BATON_ISSUE_REPO" --head "$BRANCH" --state open --json number --jq 'length')`
 - If no open PR exists for the Baton branch, treat that as an implementation-side blocker:
   update the progress comment, move the issue status back to "In Progress", and stop.
-- Once an open PR exists, resolve the PR number and base branch:
+- Once an open PR exists, resolve the PR number:
   `PR_NUMBER=$(gh pr view "$BRANCH" --repo "$BATON_ISSUE_REPO" --json number --jq '.number')`
-  `BASE_BRANCH=$(gh pr view "$BRANCH" --repo "$BATON_ISSUE_REPO" --json baseRefName --jq '.baseRefName')`
 - Review the PR as it exists now. Use `gh pr diff`, `gh pr view`, `gh pr checks`, `gh api`, and
   local read-only inspection as needed. Take existing review threads and comments into account so
   you do not re-raise feedback that is already resolved in the current diff.
@@ -88,14 +86,18 @@ Rules:
   - choose a stable `id` for each finding (for example, path + short slug) and search existing
     `<!-- baton-reviewer-finding id=... -->` comments first; if the same still-applicable finding
     is already present, do not post it again
-  - create or update exactly one marker-tagged reviewer summary comment with
-    `<!-- baton-reviewer-summary status=needs_changes -->` and a visible `[Baton Reviewer]` prefix
+  - create or update exactly one reviewer summary comment: search existing PR comments for
+    `<!-- baton-reviewer-summary -->` first; if found, edit it in place via
+    `gh api repos/$BATON_ISSUE_REPO/issues/comments/<comment_id> --method PATCH -f body='...'`;
+    if not found, post a new one with `gh pr comment $PR_NUMBER --repo $BATON_ISSUE_REPO --body '...'`.
+    The comment must contain `<!-- baton-reviewer-summary status=needs_changes -->` and a visible
+    `[Baton Reviewer]` prefix.
   - update the issue progress comment with `Role: Baton Reviewer` plus a concise summary of what
     the implementation workflow should address next
   - move the issue status back to "In Progress" so the implementation workflow can resume
 - If you do not find actionable issues:
-  - create or update exactly one marker-tagged reviewer summary comment with
-    `<!-- baton-reviewer-summary status=pass -->` and a visible `[Baton Reviewer]` prefix
+  - create or update exactly one reviewer summary comment using the same search-then-edit-or-create
+    pattern: `<!-- baton-reviewer-summary status=pass -->` and a visible `[Baton Reviewer]` prefix
   - update the issue progress comment with `Role: Baton Reviewer` and say the PR is ready for
     human review
   - move the issue status to "In Review"
