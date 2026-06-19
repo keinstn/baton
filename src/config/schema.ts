@@ -1,7 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 import { BatonError } from "../errors.js";
-import { norm } from "../util.js";
+import { isRecord, norm } from "../util.js";
 
 export interface TrackerConfig {
   kind: string | null;
@@ -80,16 +80,12 @@ export const SUPPORTED_AGENT_KINDS = ["claude_code", "copilot"];
 
 type Env = Record<string, string | undefined>;
 
-function isMap(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
-}
-
 function section(
   raw: Record<string, unknown>,
   key: string,
 ): Record<string, unknown> {
   const v = raw[key];
-  return isMap(v) ? v : {};
+  return isRecord(v) ? v : {};
 }
 
 function str(v: unknown): string | null {
@@ -216,7 +212,7 @@ export function buildConfig(
   const a = section(raw, "agent");
   const byStateRaw = a.max_concurrent_agents_by_state;
   const maxConcurrentAgentsByState: Record<string, number> = {};
-  if (isMap(byStateRaw)) {
+  if (isRecord(byStateRaw)) {
     // Invalid entries (non-positive or non-numeric) are ignored (SPEC §5.3.5).
     for (const [key, value] of Object.entries(byStateRaw)) {
       if (typeof value === "number" && Number.isInteger(value) && value > 0) {
