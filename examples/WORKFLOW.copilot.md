@@ -74,6 +74,11 @@ Rules:
   - summary comment marker: `<!-- baton-reviewer-summary status=<pass|needs_changes> -->`
   - finding comment marker: `<!-- baton-reviewer-finding id=<stable_id> -->`
   - visible prefix: `[Baton Reviewer]`
+- Every reviewer finding should also carry exactly one intent prefix after `[Baton Reviewer]`:
+  - `[must]` for a concrete defect, regression, security problem, or other change that should be fixed
+  - `[ask]` for an ambiguity, missing context, or specification question that needs clarification
+  - `[imo]` for a non-blocking suggestion that still has clear technical value
+- Do not use `[nits]`. Keep the workflow high-signal.
 - Treat comments without a Baton reviewer marker as human-authored for workflow purposes, even if
   they were posted by the same GitHub account. Do not edit, replace, or classify unmarked comments
   as this workflow's own output.
@@ -100,7 +105,9 @@ Rules:
     `gh api repos/$BATON_ISSUE_REPO/issues/comments/<comment_id> --method PATCH -f body='...'`;
     if not found, post a new one with `gh pr comment $PR_NUMBER --repo $BATON_ISSUE_REPO --body '...'`.
     The comment must contain `<!-- baton-reviewer-summary status=needs_changes -->` and a visible
-    `[Baton Reviewer]` prefix.
+    `[Baton Reviewer]` prefix. Each finding comment should normally use `[must]`; use `[ask]`
+    instead when you need clarification before deciding whether the change is wrong, and use `[imo]`
+    sparingly for non-blocking advice.
   - update the issue progress comment with `Role: Baton Reviewer` plus a concise summary of what
     the implementation workflow should address next
   - move the issue status back to "In Progress" so the implementation workflow can resume
