@@ -5,7 +5,7 @@ tracker:
   project_number: 5
   token: $GITHUB_TOKEN
   status_field: Status
-  active_states: [Todo, In Progress, Rework]
+  active_states: [Agent Review]
   terminal_states: [Done]
   required_labels: [ai-ready]
 polling:
@@ -18,13 +18,13 @@ hooks:
   before_run: |
     git fetch origin
     BRANCH="agent/$BATON_ISSUE_IDENTIFIER"
-    if [ "$BATON_ISSUE_STATUS" = "Rework" ]; then
-      git switch -C "$BRANCH" origin/main
+    if git show-ref --verify --quiet "refs/heads/$BRANCH"; then
+      git switch "$BRANCH"
     elif git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null 2>&1 && \
          gh pr list --repo "$BATON_ISSUE_REPO" --head "$BRANCH" --state open --json number --jq 'length > 0' | grep -q true; then
-      git switch "$BRANCH"
+      git switch -c "$BRANCH" --track "origin/$BRANCH"
     else
-      git switch -C "$BRANCH" origin/main
+      git switch --detach origin/main
     fi
 agent:
   kind: copilot
@@ -39,7 +39,6 @@ copilot:
   allow_tools:
     - "shell(gh)"
     - "shell(git)"
-    - write
     - view
 ---
 
@@ -49,40 +48,37 @@ You are working on GitHub issue {{ issue.repository }}#{{ issue.number }}: {{ is
 
 Rules:
 
-- Work only inside this workspace. Implement the change on the current branch and run the
-  project's tests.
-- If the issue status is "Todo" and no open PR exists for this branch, move the issue to
-  "In Progress" on the project board before starting work.
-- If the issue status is "Todo" and an open PR already exists for this branch, move the issue
-  to "In Progress" on the project board and treat the run as a feedback loop. Resolve the open
-  PR number (`PR_NUMBER=$(gh pr view --json number --jq '.number')`), collect the current
-  actionable feedback set for that PR, address each item (code changes or explicit, justified
-  pushback). For PR conversation feedback, post any agent follow-up as a later PR comment with a
-  marker of the form `<!-- baton-agent-reply source_comment_id=<comment_id> -->` so Baton can
-  tell which conversation comment has already been handled. For each unresolved review thread,
-  treat the latest reviewer comment that does not already have a later
-  `<!-- baton-agent-reply -->` reply in the same thread as the item to address, and post the
-  reply using the first comment in the thread (`databaseId` of `comments.nodes[0]`)
-  (`gh api repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/comments/<root_databaseId>/replies -f body='<!-- baton-agent-reply --> ...'`);
-  do not resolve the threads. When all feedback is resolved, push the branch and move the issue
-  status back to "In Review".
-- Actionable feedback means:
-  - PR conversation comments on `issues/$PR_NUMBER/comments` that do not themselves contain
-    `<!-- baton-agent-reply source_comment_id=<comment_id> -->` and do not already have a later
-    agent follow-up comment containing that marker for that comment's ID
-  - unresolved inline review threads, fetched via `gh api graphql` — split `$BATON_ISSUE_REPO`
-    into owner/repo (`GH_OWNER=${BATON_ISSUE_REPO%%/*}`, `GH_REPO=${BATON_ISSUE_REPO##*/}`) and
-    request fields for `reviewThreads` and `comments(first:10)` including pagination metadata
-    (`pageInfo { hasNextPage endCursor }`), then paginate review threads and thread comments
-    further as needed until you can identify the latest reviewer comment that does not already
-    have a later `<!-- baton-agent-reply -->` reply in the same thread
-  - the latest still-actionable top-level review summary per reviewer from
-    `pulls/$PR_NUMBER/reviews`
-  - paginate all list results; for top-level reviews, later `APPROVED` or `DISMISSED` reviews
-    from the same reviewer supersede older requests or comments
-- If the issue status is "Rework", treat it as a full approach reset: close the existing PR,
-  create a fresh branch from origin/main, and restart implementation from scratch addressing
-  the review feedback. When done, open a new PR and move the issue status to "In Review".
+- Work only inside this workspace. This workflow is review-only: inspect the current PR, run
+  tests when they help you validate a finding, and leave review feedback through GitHub. Do not
+  create commits, push branch changes, or implement the fix yourself.
+- This workflow is paired with the implementation workflow in `examples/WORKFLOW.md`. It should
+  only act while the issue status is "Agent Review".
+- Resolve the Baton branch and confirm there is an open PR for it:
+  `BRANCH="agent/$BATON_ISSUE_IDENTIFIER"`
+  `OPEN_PR_COUNT=$(gh pr list --repo "$BATON_ISSUE_REPO" --head "$BRANCH" --state open --json number --jq 'length')`
+- If no open PR exists for the Baton branch, treat that as an implementation-side blocker:
+  update the progress comment, move the issue status back to "In Progress", and stop.
+- Once an open PR exists, resolve the PR number and base branch:
+  `PR_NUMBER=$(gh pr view "$BRANCH" --repo "$BATON_ISSUE_REPO" --json number --jq '.number')`
+  `BASE_BRANCH=$(gh pr view "$BRANCH" --repo "$BATON_ISSUE_REPO" --json baseRefName --jq '.baseRefName')`
+- Review the PR as it exists now. Use `gh pr diff`, `gh pr view`, `gh pr checks`, `gh api`, and
+  local read-only inspection as needed. Take existing review threads and comments into account so
+  you do not re-raise feedback that is already resolved in the current diff.
+- Focus on actionable review findings: correctness bugs, missing edge cases, regressions,
+  dangerous migrations, broken tests, and mismatches between the issue and the implementation.
+  Avoid speculative or style-only comments.
+- If you find actionable issues:
+  - submit review comments or a `gh pr review --request-changes` summary with concrete guidance
+  - update the issue progress comment with a concise summary of what the implementation workflow
+    should address next
+  - move the issue status back to "In Progress" so the implementation workflow can resume
+- If you do not find actionable issues:
+  - submit a `gh pr review --approve` or an equivalent summary comment that makes it clear the
+    agent review pass is complete
+  - update the issue progress comment to say the PR is ready for human review
+  - move the issue status to "In Review"
+- Do not resolve review threads on behalf of humans. Leave the discussion state visible unless a
+  human reviewer resolves it later.
 - Report progress by editing a single persistent comment on the issue. The comment must begin
   with the marker `<!-- baton-progress -->`. On each run, search existing comments for that
   marker first; if found, edit it in place; if not found, create it. Do not post multiple
@@ -90,11 +86,9 @@ Rules:
 - Only stop early for a true blocker (missing required auth, permissions, or secrets that cannot
   be resolved in-session). If blocked, record what is missing and what action is needed to
   unblock in the progress comment, then move the issue status to "In Review" and stop.
-- When done, ensure all tests pass, push the branch, and open a PR with `gh pr create` linking
-  the issue. Then move the issue's Status to "In Review" on the project board.
 {% if attempt %}
 This is retry/continuation attempt {{ attempt }}.
-- Resume from the current workspace state; do not restart from scratch.
-- Check existing branch/PR state with `gh` before redoing any work.
-- Do not repeat already-completed steps unless new changes require it.
+- Re-review the latest PR state instead of assuming your earlier findings still apply.
+- Check existing branch/PR state with `gh` before posting another review.
+- Avoid duplicating comments when a previous finding is already addressed or already recorded.
 {% endif %}

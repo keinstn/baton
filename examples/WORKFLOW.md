@@ -63,6 +63,11 @@ Rules:
 
 - Work only inside this workspace. Implement the change on the current branch and run the
   project's tests.
+- Before moving the issue into a review state, inspect the project's available Status options and
+  choose the destination for this run:
+  - if `Agent Review` exists, use `Agent Review`
+  - otherwise use `In Review`
+  - be consistent within the run and move the issue to the same chosen review state everywhere
 - If the issue status is "Todo" and no open PR exists for this branch, move the issue to
   "In Progress" on the project board before starting work.
 - If an open PR already exists for this branch and the issue status is not "Rework", treat the
@@ -96,7 +101,7 @@ Rules:
     do not resolve the threads.
   - When all feedback is resolved, push the branch with a normal `git push` (never force-push;
     this single push carries both any merge commit and your feedback changes) and move the issue
-    status back to "In Review".
+    status to the chosen review state.
 - Actionable feedback means:
   - PR conversation comments on `issues/$PR_NUMBER/comments` that do not themselves contain
     `<!-- baton-agent-reply source_comment_id=<comment_id> -->` and do not already have a later
@@ -113,7 +118,7 @@ Rules:
     from the same reviewer supersede older requests or comments
 - If the issue status is "Rework", close the existing PR, reset the branch to origin/main, and
   take a fresh implementation pass addressing the review feedback. When done, open a new PR and
-  move the issue status to "In Review".
+  move the issue status to the chosen review state.
 - Report progress by editing a single persistent comment on the issue. The comment must begin
   with the marker `<!-- baton-progress -->`. On each run, search existing comments for that
   marker first; if found, edit it in place; if not found, create it. Do not post multiple
@@ -125,4 +130,4 @@ Rules:
   be resolved in-session). If blocked, record what is missing and what action is needed to
   unblock in the progress comment, then move the issue status to "In Review" and stop.
 - When done, ensure all tests pass, push the branch, and open a PR with `gh pr create` linking
-  the issue. Then move the issue's Status to "In Review" on the project board.
+  the issue. Then move the issue's Status to the chosen review state on the project board.
