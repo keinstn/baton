@@ -75,6 +75,9 @@ Rules:
     `<!-- baton-reviewer-summary status=<pass|needs_changes> handoff_count=<0|1|2|3> -->`
   - finding comment marker: `<!-- baton-reviewer-finding id=<stable_id> -->`
   - visible prefix: `[Baton Reviewer]`
+- Treat the reviewer summary comment as the single source of truth for reviewer-owned machine state.
+  Keep the marker line machine-readable and stable, and add a visible note such as `Managed by
+  Baton; do not edit the marker line manually.` below it.
 - Every reviewer finding should also carry exactly one intent prefix after `[Baton Reviewer]`:
   - `[must]` for a concrete defect, regression, security problem, or other change that should be fixed
   - `[ask]` for an ambiguity, missing context, or specification question that needs clarification
@@ -100,7 +103,11 @@ Rules:
   - increment `handoff_count` each time this workflow returns the issue to `In Progress`
   - once `handoff_count` reaches `3`, stop sending the issue back to `In Progress`
   - after the third send-back, escalate by updating the reviewer summary and progress comment to
-    say the agent review loop limit was reached and move the issue to `In Review` for human review
+    say `Human attention required: agent review loop limit reached.` and move the issue to
+    `In Review` for human review
+  - if the summary marker is missing, malformed, or cannot be parsed confidently, do not guess;
+    update the reviewer summary and progress comment to say `Human attention required: reviewer
+    state could not be read safely.` and move the issue to `In Review`
 - If you find actionable issues:
   - post marker-tagged PR comments with concrete guidance; use inline comments when a code location
     matters
@@ -112,19 +119,21 @@ Rules:
     `gh api repos/$BATON_ISSUE_REPO/issues/comments/<comment_id> --method PATCH -f body='...'`;
     if not found, post a new one with `gh pr comment $PR_NUMBER --repo $BATON_ISSUE_REPO --body '...'`.
     The comment must contain `<!-- baton-reviewer-summary status=needs_changes handoff_count=<n> -->`
-    and a visible `[Baton Reviewer]` prefix. Each finding comment should normally use `[must]`;
-    use `[ask]` instead when you need clarification before deciding whether the change is wrong,
-    and use `[imo]` sparingly for non-blocking advice.
+    and a visible `[Baton Reviewer]` prefix plus `Managed by Baton; do not edit the marker line
+    manually.`. Each finding comment should normally use `[must]`; use `[ask]` instead when you
+    need clarification before deciding whether the change is wrong, and use `[imo]` sparingly for
+    non-blocking advice.
   - update the issue progress comment with `Role: Baton Reviewer` plus a concise summary of what
     the implementation workflow should address next
   - if `handoff_count` is still below `3`, move the issue status back to "In Progress" so the
     implementation workflow can resume
   - if this finding set would make `handoff_count` exceed `3`, do not send the issue back again;
-    instead, say that the agent review loop limit was reached and move the issue to "In Review"
+    instead, keep `status=needs_changes`, say `Human attention required: agent review loop limit
+    reached.`, and move the issue to "In Review"
 - If you do not find actionable issues:
   - create or update exactly one reviewer summary comment using the same search-then-edit-or-create
     pattern: `<!-- baton-reviewer-summary status=pass handoff_count=<n> -->` and a visible
-    `[Baton Reviewer]` prefix
+    `[Baton Reviewer]` prefix plus `Managed by Baton; do not edit the marker line manually.`
   - update the issue progress comment with `Role: Baton Reviewer` and say the PR is ready for
     human review
   - move the issue status to "In Review"
@@ -138,7 +147,8 @@ Rules:
 - Only stop early for a true blocker (missing required auth, permissions, or secrets that cannot
   be resolved in-session). If blocked, record what is missing and what action is needed to
   unblock in the progress comment, include `Role: Baton Reviewer`, create or update the reviewer
-  summary comment with `status=needs_changes`, then move the issue status to "In Review" and stop.
+  summary comment with `status=needs_changes`, say `Human attention required:` in both places, then
+  move the issue status to "In Review" and stop.
 {% if attempt %}
 This is retry/continuation attempt {{ attempt }}.
 - Re-review the latest PR state instead of assuming your earlier findings still apply.
