@@ -122,8 +122,8 @@ The `project_number` for `WORKFLOW.md` is the trailing integer in the project UR
 
 The `WORKFLOW.md` file is the single configuration + prompt contract for your project. Copy one of the examples as a starting point:
 
-- [`examples/WORKFLOW.md`](examples/WORKFLOW.md) — Claude Code agent
-- [`examples/WORKFLOW.copilot.md`](examples/WORKFLOW.copilot.md) — GitHub Copilot agent
+- [`examples/WORKFLOW.md`](examples/WORKFLOW.md) — Claude Code implementation workflow
+- [`examples/WORKFLOW.copilot.md`](examples/WORKFLOW.copilot.md) — GitHub Copilot PR review workflow
 
 Edit the YAML front matter to point at your GitHub Project:
 
@@ -138,6 +138,14 @@ tracker:
 agent:
   kind: claude_code      # or: copilot
 ```
+
+If you run the two example workflows together, start two Baton processes against the same
+project board and add an `Agent Review` status. The Claude implementation workflow hands an item
+from `In Progress` to `Agent Review`; the Copilot review workflow either returns it to
+`In Progress` for fixes or advances it to `In Review` for human review. Give each process its own
+`workspace.root` (and its own dashboard `server.port`, if enabled) so they never share a working
+tree — the review workflow re-syncs to the pushed PR head, so it does not need the implementer's
+local state.
 
 **2. Set environment variables**
 
