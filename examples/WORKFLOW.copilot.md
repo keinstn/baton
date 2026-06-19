@@ -40,14 +40,18 @@ copilot:
   # an explicit operator decision.
   allow_all_tools: false
   allow_tools:
+    # Minimal allowlist for a Copilot reviewer run. Copilot CLI uses its own
+    # permission model: bare tool names (report_intent, bash, rg, view) are
+    # permitted as-is; shell subcommands need a wildcard to match any argument.
+    - "report_intent"  # signal reviewer intent before taking actions
+    - "bash"           # run shell commands during review
+    - "rg"             # ripgrep for local code search
+    - "view"           # read files without triggering unqualified-tool failures
     # shell(command:*) syntax: wildcard required to permit any subcommand.
     # "shell(gh)" without a wildcard matches only the bare `gh` invocation and
     # rejects every subcommand (pr, api, issue…), producing tool_failed: unknown.
     - "shell(gh:*)"    # gh pr diff/view/checks/api/comment/issue
     - "shell(git:*)"   # git fetch/switch/log/ls-remote (before_run hook + review)
-    # All review content is accessed via gh commands above; bare read_file/search_files
-    # do not match Copilot's server-qualified MCP permission format and cause
-    # tool_failed: unknown — omit them rather than risk a permission loop.
 ---
 
 You are working on GitHub issue {{ issue.repository }}#{{ issue.number }}: {{ issue.title }}.
