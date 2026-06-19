@@ -25,19 +25,13 @@ hooks:
     fi
     if [ "$BATON_ISSUE_STATUS" = "Rework" ]; then
       git switch -C "$BRANCH" origin/main
+    elif [ "$GIT_IN_PROGRESS" = true ]; then
+      :
+    elif git show-ref --verify --quiet "refs/heads/$BRANCH"; then
+      git switch "$BRANCH"
     elif git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null 2>&1 && \
          gh pr list --repo "$BATON_ISSUE_REPO" --head "$BRANCH" --state open --json number --jq 'length > 0' | grep -q true; then
-      if [ "$GIT_IN_PROGRESS" = true ]; then
-        CURRENT_BRANCH=$(git branch --show-current)
-        if [ "$CURRENT_BRANCH" != "$BRANCH" ]; then
-          echo "resume the in-progress git operation on $BRANCH before switching branches" >&2
-          exit 1
-        fi
-      elif git show-ref --verify --quiet "refs/heads/$BRANCH"; then
-        git switch "$BRANCH"
-      else
-        git switch -c "$BRANCH" --track "origin/$BRANCH"
-      fi
+      git switch -c "$BRANCH" --track "origin/$BRANCH"
     else
       git switch -C "$BRANCH" origin/main
     fi
@@ -114,14 +108,11 @@ Rules:
   with the marker `<!-- baton-progress -->`. On each run, search existing comments for that
   marker first; if found, edit it in place; if not found, create it. Do not post multiple
   separate comments.
+- On retries or continuations, resume from the current workspace state. Check the existing branch,
+  git-operation state, and PR state before redoing work, and do not repeat already-completed steps
+  unless new changes require it.
 - Only stop early for a true blocker (missing required auth, permissions, or secrets that cannot
   be resolved in-session). If blocked, record what is missing and what action is needed to
   unblock in the progress comment, then move the issue status to "In Review" and stop.
 - When done, ensure all tests pass, push the branch, and open a PR with `gh pr create` linking
   the issue. Then move the issue's Status to "In Review" on the project board.
-{% if attempt %}
-This is retry/continuation attempt {{ attempt }}.
-- Resume from the current workspace state; do not restart from scratch.
-- Check existing branch/PR state with `gh` before redoing any work.
-- Do not repeat already-completed steps unless new changes require it.
-{% endif %}
