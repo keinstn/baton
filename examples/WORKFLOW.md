@@ -24,15 +24,6 @@ hooks:
       GIT_IN_PROGRESS=true
     fi
     if [ "$BATON_ISSUE_STATUS" = "Rework" ]; then
-      if [ -f .git/MERGE_HEAD ]; then
-        git merge --abort
-      fi
-      if [ -f .git/CHERRY_PICK_HEAD ]; then
-        git cherry-pick --abort
-      fi
-      if [ -d .git/rebase-merge ] || [ -d .git/rebase-apply ]; then
-        git rebase --abort
-      fi
       git switch -C "$BRANCH" origin/main
     elif [ "$GIT_IN_PROGRESS" = true ]; then
       :
