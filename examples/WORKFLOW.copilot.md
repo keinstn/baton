@@ -62,7 +62,7 @@ Rules:
   tell which conversation comment has already been handled. For each unresolved review thread,
   treat the latest reviewer comment that does not already have a later
   `<!-- baton-agent-reply -->` reply in the same thread as the item to address, and post the
-  reply using the thread's root review comment `databaseId`
+  reply using the first comment in the thread (`databaseId` of `comments.nodes[0]`)
   (`gh api repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/comments/<root_databaseId>/replies -f body='<!-- baton-agent-reply --> ...'`);
   do not resolve the threads. When all feedback is resolved, push the branch and move the issue
   status back to "In Review".
