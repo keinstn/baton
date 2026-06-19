@@ -67,9 +67,9 @@ Rules:
   do not resolve the threads. When all feedback is resolved, push the branch and move the issue
   status back to "In Review".
 - Actionable feedback means:
-  - PR conversation comments on `issues/$PR_NUMBER/comments` that do not already have a later
-    agent follow-up comment containing `<!-- baton-agent-reply source_comment_id=<comment_id> -->`
-    for that comment's ID
+  - PR conversation comments on `issues/$PR_NUMBER/comments` that do not themselves contain
+    `<!-- baton-agent-reply source_comment_id=<comment_id> -->` and do not already have a later
+    agent follow-up comment containing that marker for that comment's ID
   - unresolved inline review threads, fetched via `gh api graphql` — split `$BATON_ISSUE_REPO`
     into owner/repo (`GH_OWNER=${BATON_ISSUE_REPO%%/*}`, `GH_REPO=${BATON_ISSUE_REPO##*/}`) and
     request fields for `reviewThreads` and `comments(first:10)` including pagination metadata
