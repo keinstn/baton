@@ -23,7 +23,7 @@ hooks:
     BRANCH="agent/$BATON_ISSUE_IDENTIFIER"
     # Review-only: never push, so always hard-reset to the origin head. This avoids reviewing a
     # stale local branch when re-reviewing after the implementer pushed new commits.
-    if git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null 2>&1 && \
+    if git show-ref --verify --quiet "refs/remotes/origin/$BRANCH" && \
        gh pr list --repo "$BATON_ISSUE_REPO" --head "$BRANCH" --state open --json number --jq 'length > 0' | grep -q true; then
       git switch -C "$BRANCH" --track "origin/$BRANCH"
     else
