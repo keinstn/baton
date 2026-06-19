@@ -25,6 +25,19 @@ export async function ensureWorkspaceDir(workspace: string): Promise<void> {
   }
 }
 
+/** Create a fresh AgentSession for the given workspace directory. */
+export async function createSession(workspace: string): Promise<AgentSession> {
+  await ensureWorkspaceDir(workspace);
+  return {
+    workspace,
+    agentSessionId: null,
+    proc: null,
+    procClosed: null,
+    procForceClose: null,
+    turnNumber: 0,
+  };
+}
+
 /** Terminate a session's process tree and wait until it has closed. */
 export async function stopSessionProcess(
   session: AgentSession,

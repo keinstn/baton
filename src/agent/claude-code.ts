@@ -6,11 +6,7 @@ import {
 import type { Logger } from "../observability/logger.js";
 import { makePlatform, type Platform } from "../platform/platform.js";
 import { now, shellQuote } from "../util.js";
-import {
-  ensureWorkspaceDir,
-  runSubprocess,
-  stopSessionProcess,
-} from "./process.js";
+import { createSession, runSubprocess, stopSessionProcess } from "./process.js";
 import type {
   AgentEvent,
   AgentEventCallback,
@@ -79,15 +75,7 @@ export class ClaudeCodeRunner implements AgentRunner {
   }
 
   async startSession(workspace: string): Promise<AgentSession> {
-    await ensureWorkspaceDir(workspace);
-    return {
-      workspace,
-      agentSessionId: null,
-      proc: null,
-      procClosed: null,
-      procForceClose: null,
-      turnNumber: 0,
-    };
+    return createSession(workspace);
   }
 
   async runTurn(
