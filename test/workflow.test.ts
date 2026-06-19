@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -71,5 +71,23 @@ describe("loadWorkflow (SPEC §5.1)", () => {
     ).rejects.toMatchObject({
       code: "missing_workflow_file",
     });
+  });
+});
+
+describe("example workflows", () => {
+  it("documents base-branch conflict handling for feedback-loop reruns", async () => {
+    const text = await readFile(
+      new URL("../examples/WORKFLOW.md", import.meta.url),
+      "utf8",
+    );
+
+    expect(text).toContain(
+      'If an open PR already exists for this branch and the issue status is not "Rework"',
+    );
+    expect(text).toContain(
+      "BASE_BRANCH=$(gh pr view --json baseRefName --jq '.baseRefName')",
+    );
+    expect(text).toContain('git merge --no-edit "origin/$BASE_BRANCH"');
+    expect(text).toContain("Reflect the merge with a normal `git push`");
   });
 });
