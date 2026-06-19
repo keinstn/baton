@@ -87,7 +87,7 @@ Rules:
     `<!-- baton-reviewer-finding id=... -->` comments first; if the same still-applicable finding
     is already present, do not post it again
   - create or update exactly one reviewer summary comment: search existing PR comments for
-    `<!-- baton-reviewer-summary -->` first; if found, edit it in place via
+    `<!-- baton-reviewer-summary status=` first; if found, edit it in place via
     `gh api repos/$BATON_ISSUE_REPO/issues/comments/<comment_id> --method PATCH -f body='...'`;
     if not found, post a new one with `gh pr comment $PR_NUMBER --repo $BATON_ISSUE_REPO --body '...'`.
     The comment must contain `<!-- baton-reviewer-summary status=needs_changes -->` and a visible

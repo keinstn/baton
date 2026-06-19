@@ -122,7 +122,9 @@ Rules:
   move the issue status to the chosen review state.
 - Report progress by editing a single persistent comment on the issue. The comment must begin
   with the marker `<!-- baton-progress -->`. On each run, search existing comments for that
-  marker first; if found, edit it in place; if not found, create it. Do not post multiple
+  marker first; if found, edit it in place; if not found, create it. Include
+  `Role: Baton Implementer` in the body so shared-account operators can tell whether the latest
+  update came from the implementation workflow or the reviewer workflow. Do not post multiple
   separate comments.
 - On retries or continuations, resume from the current workspace state. Check the existing branch,
   git-operation state, and PR state before redoing work, and do not repeat already-completed steps
