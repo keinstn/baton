@@ -57,10 +57,11 @@ Rules:
   to "In Progress" on the project board and treat the run as a feedback loop. Resolve the open
   PR number (`PR_NUMBER=$(gh pr view --json number --jq '.number')`), collect the current
   actionable feedback set for that PR, address each item (code
-  changes or explicit, justified pushback), and for each unresolved review thread read the latest
-  comment for the most recent feedback but reply using the thread's root review comment
-  `databaseId`
-  (`gh api repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/comments/<root_databaseId>/replies -f body=...`);
+  changes or explicit, justified pushback), and for each unresolved review thread treat the latest
+  comment without the `<!-- baton-agent-reply -->` marker as the latest reviewer feedback. When
+  replying, include that marker in every agent reply and post the reply using the thread's root
+  review comment `databaseId`
+  (`gh api repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/comments/<root_databaseId>/replies -f body='<!-- baton-agent-reply --> ...'`);
   do not resolve the threads. When all feedback is resolved, push the branch and move the issue
   status back to "In Review".
 - Actionable feedback means:
@@ -68,7 +69,8 @@ Rules:
     replies
   - unresolved inline review threads, fetched via `gh api graphql` — split `$BATON_ISSUE_REPO`
     into owner/repo (`GH_OWNER=${BATON_ISSUE_REPO%%/*}`, `GH_REPO=${BATON_ISSUE_REPO##*/}`) and
-    request fields `{isResolved, id, comments(first:10){nodes{databaseId, body, author{login}}}}`
+    request fields `{isResolved, id, comments(first:10){nodes{databaseId, body}}}` so you can
+    ignore comments containing the `<!-- baton-agent-reply -->` marker
   - the latest still-actionable top-level review summary per reviewer from
     `pulls/$PR_NUMBER/reviews`
   - paginate all list results; for top-level reviews, later `APPROVED` or `DISMISSED` reviews
