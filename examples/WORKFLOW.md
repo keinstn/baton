@@ -54,26 +54,20 @@ Rules:
 - If the issue status is "Todo" and no open PR exists for this branch, move the issue to
   "In Progress" on the project board before starting work.
 - If the issue status is "Todo" and an open PR already exists for this branch, move the issue
-  to "In Progress" on the project board, then treat it as a feedback loop. First resolve the
-  open PR number (`PR_NUMBER=$(gh pr view --json number --jq '.number')`). Build the actionable
-  feedback set for that PR from: general PR conversation comments
-  (`gh api --paginate repos/$BATON_ISSUE_REPO/issues/$PR_NUMBER/comments`) excluding your own
-  comments and replies; unresolved inline review threads only via `gh api graphql` — split
-  `$BATON_ISSUE_REPO` into owner/repo (`GH_OWNER=${BATON_ISSUE_REPO%%/*}`,
-  `GH_REPO=${BATON_ISSUE_REPO##*/}`), query
-  `repository(owner,name).pullRequest(number:$PR_NUMBER).reviewThreads`, and paginate through all
-  `reviewThreads` pages and each thread's `comments` pages before deciding which unresolved
-  threads are actionable and which `databaseId` is the last comment to reply to; and top-level
-  review summaries from `gh api --paginate repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/reviews`,
-  reduced by reviewer using each reviewer's latest review state first: if the latest review is
-  `APPROVED` or `DISMISSED`, treat older summaries from that reviewer as superseded; if the latest
-  review is `COMMENTED` or `CHANGES_REQUESTED`, keep that reviewer's latest non-empty summary as
-  actionable. Do not re-process resolved threads or superseded review summaries. Address each
-  actionable item (code changes or explicit, justified pushback). Reply to the last comment in
-  each unresolved thread describing how you addressed it, using that comment's `databaseId`
+  to "In Progress" on the project board and treat the run as a feedback loop. Resolve the open
+  PR number, collect the current actionable feedback set for that PR, address each item (code
+  changes or explicit, justified pushback), reply to the last comment in each unresolved review
+  thread describing how you addressed it, using that comment's `databaseId`
   (`gh api repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/comments/<databaseId>/replies -f body=...`);
   do not resolve the threads. When all feedback is resolved, push the branch and move the issue
   status back to "In Review".
+- Actionable feedback means: PR conversation comments on
+  `issues/$PR_NUMBER/comments`, excluding your own comments and replies; unresolved inline review
+  threads, fetched via `gh api graphql`; and the latest still-actionable top-level review summary
+  per reviewer from `pulls/$PR_NUMBER/reviews`.
+- When collecting feedback, paginate all list results. For top-level reviews, use each reviewer's
+  latest review state to decide whether an older summary is still actionable; later `APPROVED` or
+  `DISMISSED` reviews supersede older requests or comments.
 - If the issue status is "Rework", treat it as a full approach reset: close the existing PR,
   create a fresh branch from origin/main, and restart implementation from scratch addressing
   the review feedback. When done, open a new PR and move the issue status to "In Review".
