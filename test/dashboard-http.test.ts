@@ -75,6 +75,19 @@ describe("dashboard HTTP server", () => {
     }
   });
 
+  it("GET / includes safeHref scheme-check function to prevent javascript: XSS", async () => {
+    const { server, baseUrl } = await startTestServer();
+    try {
+      const res = await fetch(`${baseUrl}/`);
+      const body = await res.text();
+      expect(body).toContain("safeHref");
+      expect(body).toContain('u.protocol === "https:"');
+      expect(body).toContain('u.protocol === "http:"');
+    } finally {
+      await server.close();
+    }
+  });
+
   it("script-safe TARGETS: </script> in name/URL does not break the script block", async () => {
     const server = await startDashboardServer({
       host: "127.0.0.1",

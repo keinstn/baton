@@ -81,6 +81,15 @@ function esc(s) {
     .replace(/"/g, "&quot;");
 }
 
+function safeHref(url) {
+  try {
+    const u = new URL(url);
+    return (u.protocol === "https:" || u.protocol === "http:") ? url : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 function renderTable(rows, cols, renderRow) {
   if (!rows || rows.length === 0) return '<p class="empty">none</p>';
   const head = cols.map(c => \`<th>\${c}</th>\`).join("");
@@ -92,8 +101,8 @@ function renderRunning(rows) {
   return renderTable(
     rows,
     ["Issue", "Title", "State", "Turns", "Session", "Last event", "Started", "Tokens"],
-    r => \`<tr>
-      <td>\${r.issue_url ? \`<a href="\${esc(r.issue_url)}">\${esc(r.identifier)}</a>\` : esc(r.identifier)}</td>
+    r => { const href = r.issue_url ? safeHref(r.issue_url) : null; return \`<tr>
+      <td>\${href ? \`<a href="\${esc(href)}">\${esc(r.identifier)}</a>\` : esc(r.identifier)}</td>
       <td>\${esc(r.title)}</td>
       <td>\${esc(r.state ?? "")}</td>
       <td class="num">\${r.turn_count}</td>
@@ -101,7 +110,7 @@ function renderRunning(rows) {
       <td>\${esc(r.last_event ?? "—")}</td>
       <td>\${esc(r.started_at)}</td>
       <td class="num">\${r.total_tokens ?? 0}</td>
-    </tr>\`
+    </tr>\`; }
   );
 }
 
@@ -109,14 +118,14 @@ function renderRetrying(rows) {
   return renderTable(
     rows,
     ["Issue", "Title", "Attempt", "Scheduled", "Fires", "Delay (ms)"],
-    r => \`<tr>
-      <td>\${r.issue_url ? \`<a href="\${esc(r.issue_url)}">\${esc(r.identifier)}</a>\` : esc(r.identifier)}</td>
+    r => { const href = r.issue_url ? safeHref(r.issue_url) : null; return \`<tr>
+      <td>\${href ? \`<a href="\${esc(href)}">\${esc(r.identifier)}</a>\` : esc(r.identifier)}</td>
       <td>\${esc(r.title)}</td>
       <td class="num">\${r.attempt}</td>
       <td>\${esc(r.scheduled_at)}</td>
       <td>\${esc(r.fires_at)}</td>
       <td class="num">\${r.delay_ms}</td>
-    </tr>\`
+    </tr>\`; }
   );
 }
 
