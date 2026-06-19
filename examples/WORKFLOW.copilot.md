@@ -17,7 +17,7 @@ workspace:
   root: ~/baton_review_workspaces
 hooks:
   after_create: |
-    gh repo clone "$BATON_ISSUE_REPO" . -- --depth 50
+    gh repo clone "$BATON_ISSUE_REPO" . -- --depth 50 --no-single-branch
   before_run: |
     git fetch origin
     BRANCH="agent/$BATON_ISSUE_IDENTIFIER"
@@ -27,7 +27,7 @@ hooks:
        gh pr list --repo "$BATON_ISSUE_REPO" --head "$BRANCH" --state open --json number --jq 'length > 0' | grep -q true; then
       git switch -C "$BRANCH" --track "origin/$BRANCH"
     else
-      git switch --detach origin/main
+      git switch --detach origin/HEAD
     fi
 agent:
   kind: copilot
