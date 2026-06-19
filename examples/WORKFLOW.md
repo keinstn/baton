@@ -58,12 +58,13 @@ Rules:
   open PR number (`PR_NUMBER=$(gh pr view --json number --jq '.number')`), then fetch all
   feedback using that number: general conversation comments
   (`gh api --paginate repos/$BATON_ISSUE_REPO/issues/$PR_NUMBER/comments`), top-level PR reviews
-  filtered to non-empty CHANGES_REQUESTED or COMMENTED bodies from the most recent round
-  (`gh api --paginate repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/reviews`), and inline
-  review-thread comments
-  (`gh api --paginate repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/comments`). Address each item
-  (code changes or explicit, justified pushback). Reply to each inline review-thread comment
-  describing how you addressed it
+  filtered to non-empty CHANGES_REQUESTED or COMMENTED bodies whose `commit_id` matches
+  the current head SHA (`git rev-parse HEAD`)
+  (`gh api --paginate repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/reviews`), and unresolved
+  inline review threads only
+  (`gh pr view $PR_NUMBER --json reviewThreads --jq '[.reviewThreads[] | select(.isResolved == false)]'`).
+  Address each item (code changes or explicit, justified pushback). Reply to each unresolved
+  thread's last comment describing how you addressed it
   (`gh api repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/comments/<comment_id>/replies -f body=...`);
   do not resolve the threads. When all feedback is resolved, push the branch and move the issue
   status back to "In Review".
