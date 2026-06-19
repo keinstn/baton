@@ -54,17 +54,18 @@ Rules:
 - If the issue status is "Todo" and no open PR exists for this branch, move the issue to
   "In Progress" on the project board before starting work.
 - If the issue status is "Todo" and an open PR already exists for this branch, move the issue
-  to "In Progress" on the project board, then treat it as a feedback loop: review all open PR
-  comments — general conversation comments (fetch them with
-  `gh api --paginate repos/$BATON_ISSUE_REPO/issues/<n>/comments`), top-level PR reviews
-  including REQUEST_CHANGES and COMMENT reviews (fetch them with
-  `gh api --paginate repos/$BATON_ISSUE_REPO/pulls/<n>/reviews`), and inline review-thread
-  comments (fetch them with
-  `gh api --paginate repos/$BATON_ISSUE_REPO/pulls/<n>/comments`) — and address each one (code
-  changes or explicit, justified pushback). Reply to each review-thread comment describing how
-  you addressed it
-  (`gh api repos/$BATON_ISSUE_REPO/pulls/<n>/comments/<comment_id>/replies -f body=...`); do
-  not resolve the threads. When all feedback is resolved, push the branch and move the issue
+  to "In Progress" on the project board, then treat it as a feedback loop. First resolve the
+  open PR number (`PR_NUMBER=$(gh pr view --json number --jq '.number')`), then fetch all
+  feedback using that number: general conversation comments
+  (`gh api --paginate repos/$BATON_ISSUE_REPO/issues/$PR_NUMBER/comments`), top-level PR reviews
+  filtered to non-empty CHANGES_REQUESTED or COMMENTED bodies from the most recent round
+  (`gh api --paginate repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/reviews`), and inline
+  review-thread comments
+  (`gh api --paginate repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/comments`). Address each item
+  (code changes or explicit, justified pushback). Reply to each inline review-thread comment
+  describing how you addressed it
+  (`gh api repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/comments/<comment_id>/replies -f body=...`);
+  do not resolve the threads. When all feedback is resolved, push the branch and move the issue
   status back to "In Review".
 - If the issue status is "Rework", treat it as a full approach reset: close the existing PR,
   create a fresh branch from origin/main, and restart implementation from scratch addressing
