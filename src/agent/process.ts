@@ -2,7 +2,11 @@ import { spawn } from "node:child_process";
 import { stat } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { setTimeout as delay } from "node:timers/promises";
-import { ERROR_MESSAGE_MAX_BYTES, STDERR_TAIL_BYTES } from "../constants.js";
+import {
+  DISPLAY_TEXT_MAX_BYTES,
+  ERROR_MESSAGE_MAX_BYTES,
+  STDERR_TAIL_BYTES,
+} from "../constants.js";
 import { BatonError } from "../errors.js";
 import type { Logger } from "../observability/logger.js";
 import { makeTreeKiller, type TreeKiller } from "../platform/tree-killer.js";
@@ -22,6 +26,29 @@ export async function ensureWorkspaceDir(workspace: string): Promise<void> {
       "invalid_workspace_cwd",
       `not a directory: ${workspace}`,
     );
+  }
+}
+
+/**
+ * Shared JSON-line parse preamble for agent adapters (SPEC §10.1, §10.2).
+ * Trims the line, returns null on empty, parses JSON, and on parse failure
+ * emits a `malformed` AgentEvent then returns null.
+ */
+export function parseJsonLine(
+  line: string,
+  onEvent: AgentEventCallback,
+): Record<string, unknown> | null {
+  const trimmed = line.trim();
+  if (trimmed === "") return null;
+  try {
+    return JSON.parse(trimmed) as Record<string, unknown>;
+  } catch {
+    onEvent({
+      event: "malformed",
+      timestamp: now(),
+      message: trimmed.slice(0, DISPLAY_TEXT_MAX_BYTES),
+    });
+    return null;
   }
 }
 

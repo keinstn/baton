@@ -6,6 +6,7 @@ import { makePlatform, type Platform } from "../platform/platform.js";
 import { now, shellQuote } from "../util.js";
 import {
   ensureWorkspaceDir,
+  parseJsonLine,
   runSubprocess,
   stopSessionProcess,
 } from "./process.js";
@@ -190,19 +191,8 @@ export class CopilotRunner implements AgentRunner {
     isNewSession: boolean,
     onEvent: AgentEventCallback,
   ): { result: TurnResult | null; sessionStarted: boolean } {
-    const trimmed = line.trim();
-    if (trimmed === "") return { result: null, sessionStarted: false };
-    let msg: Record<string, unknown>;
-    try {
-      msg = JSON.parse(trimmed) as Record<string, unknown>;
-    } catch {
-      onEvent({
-        event: "malformed",
-        timestamp: now(),
-        message: trimmed.slice(0, DISPLAY_TEXT_MAX_BYTES),
-      });
-      return { result: null, sessionStarted: false };
-    }
+    const msg = parseJsonLine(line, onEvent);
+    if (msg === null) return { result: null, sessionStarted: false };
     const type = typeof msg.type === "string" ? msg.type : "";
     const data = (msg.data ?? {}) as Record<string, unknown>;
 
