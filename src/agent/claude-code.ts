@@ -6,7 +6,12 @@ import {
 import type { Logger } from "../observability/logger.js";
 import { makePlatform, type Platform } from "../platform/platform.js";
 import { now, shellQuote } from "../util.js";
-import { createSession, runSubprocess, stopSessionProcess } from "./process.js";
+import {
+  createSession,
+  parseJsonLine,
+  runSubprocess,
+  stopSessionProcess,
+} from "./process.js";
 import type {
   AgentEvent,
   AgentEventCallback,
@@ -135,19 +140,8 @@ export class ClaudeCodeRunner implements AgentRunner {
     onEvent: AgentEventCallback,
     accum: TurnAccum,
   ): TurnResult | null {
-    const trimmed = line.trim();
-    if (trimmed === "") return null;
-    let msg: Record<string, unknown>;
-    try {
-      msg = JSON.parse(trimmed) as Record<string, unknown>;
-    } catch {
-      onEvent({
-        event: "malformed",
-        timestamp: now(),
-        message: trimmed.slice(0, DISPLAY_TEXT_MAX_BYTES),
-      });
-      return null;
-    }
+    const msg = parseJsonLine(line, onEvent);
+    if (msg === null) return null;
     switch (msg.type) {
       case "system": {
         if (msg.subtype === "init" && typeof msg.session_id === "string") {
