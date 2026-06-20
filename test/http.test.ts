@@ -151,6 +151,16 @@ describe("startHttpServer (SPEC §13.7)", () => {
         await srv.close();
       }
     });
+
+    it("includes Access-Control-Allow-Origin: * for cross-origin dashboard fetches", async () => {
+      const srv = await startTestServer();
+      try {
+        const res = await fetch(`${srv.baseUrl}/api/v1/state`);
+        expect(res.headers.get("access-control-allow-origin")).toBe("*");
+      } finally {
+        await srv.close();
+      }
+    });
   });
 
   describe("GET /api/v1/<identifier>", () => {

@@ -30,7 +30,7 @@ export function parseArgs(argv: string[]): CliArgs {
   return { workflowPath: workflowPath ?? "./WORKFLOW.md", port };
 }
 
-function parsePort(s: string): number {
+export function parsePort(s: string): number {
   const n = Number(s);
   if (!Number.isInteger(n) || n < 1 || n > 65535) {
     throw new Error(`invalid --port value: ${s}`);

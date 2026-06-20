@@ -1,0 +1,9 @@
+server:
+  host: "127.0.0.1"
+  port: 8800
+
+targets:
+  - name: "implementer"
+    url: "http://127.0.0.1:8787"
+  - name: "reviewer"
+    url: "http://127.0.0.1:8788"
