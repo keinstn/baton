@@ -112,6 +112,16 @@ Rules:
   shape of a fix without dictating the only acceptable implementation.
 - Limit agent-only review loops. Track how many times this workflow has sent the issue back from
   `Agent Review` to `In Progress` in the reviewer summary comment's `handoff_count` field.
+  - before applying any increment logic, check the existing reviewer summary comment's `status`
+    field:
+    - if `status=pass`: the prior agent review cycle ended with approval, and the issue was
+      subsequently rejected by a human reviewer and re-entered `Agent Review`. This is a fresh
+      cycle, not a continuation of the previous agent-only loop, so reset `handoff_count` to `0`.
+      (Without this reset, normal agent → human → agent round-trips would consume the loop budget
+      even though no infinite agent-only loop occurred.)
+    - if `status=needs_changes`: the issue is still inside the same agent-only cycle; carry the
+      existing `handoff_count` forward without resetting.
+    - if no existing summary comment is found: start `handoff_count` at `0` as normal.
   - increment `handoff_count` each time this workflow returns the issue to `In Progress`
   - once `handoff_count` reaches `3`, stop sending the issue back to `In Progress`
   - after the third send-back, escalate by updating the reviewer summary and progress comment to
