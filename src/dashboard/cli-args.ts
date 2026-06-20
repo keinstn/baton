@@ -1,3 +1,5 @@
+import { parsePort } from "../cli-args.js";
+
 export interface DashboardCliArgs {
   configPath: string;
   /** When set, overrides `server.port` from the YAML config. */
@@ -27,12 +29,4 @@ export function parseDashboardArgs(argv: string[]): DashboardCliArgs {
     }
   }
   return { configPath: configPath ?? "./baton-dashboard.yaml", port };
-}
-
-function parsePort(s: string): number {
-  const n = Number(s);
-  if (!Number.isInteger(n) || n < 1 || n > 65535) {
-    throw new Error(`invalid --port value: ${s}`);
-  }
-  return n;
 }

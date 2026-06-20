@@ -4,21 +4,6 @@ export interface ErrorEnvelope {
   error: { code: string; message: string };
 }
 
-/** HTML-escape a string to prevent XSS when embedding in HTML. */
-export function he(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-/** URL-encode a string for safe use in query parameters or href attributes. */
-export function ue(s: string): string {
-  return encodeURIComponent(s);
-}
-
 export const exact =
   (p: string) =>
   (path: string): string[] | null =>

@@ -101,6 +101,17 @@ describe("dashboard HTTP server", () => {
     }
   });
 
+  it("GET / includes setInterval auto-refresh", async () => {
+    const { server, baseUrl } = await startTestServer();
+    try {
+      const res = await fetch(`${baseUrl}/`);
+      const body = await res.text();
+      expect(body).toContain("setInterval(fetchAll,");
+    } finally {
+      await server.close();
+    }
+  });
+
   it("script-safe TARGETS: </script> in name/URL does not break the script block", async () => {
     const server = await startDashboardServer({
       host: "127.0.0.1",

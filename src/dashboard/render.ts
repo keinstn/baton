@@ -1,5 +1,4 @@
-import { DASHBOARD_CSS } from "../observability/dashboard.js";
-import { he } from "../observability/http-util.js";
+import { DASHBOARD_CSS, escapeHtml as he } from "../observability/dashboard.js";
 import type { DashboardTarget } from "./config.js";
 
 /** Produce JSON safe for embedding inside a <script> block: escape <, >, &. */
@@ -195,6 +194,7 @@ async function fetchAll() {
 }
 
 fetchAll();
+setInterval(fetchAll, 30000);
 </script>
 </body>
 </html>
