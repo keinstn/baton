@@ -112,7 +112,6 @@ const routes: Route[] = [
     match: exact("/api/v1/state"),
     methods: ["GET", "HEAD"],
     handle: ({ res, deps, method }) => {
-      res.setHeader("Access-Control-Allow-Origin", "*");
       sendJson(res, 200, deps.snapshot(), method === "HEAD");
     },
   },
@@ -140,6 +139,16 @@ async function handleRequest(
   const url = req.url ?? "/";
   // Parse path only; query string is unused (observability/control surface).
   const path = url.split("?", 1)[0] ?? "/";
+
+  res.setHeader("Access-Control-Allow-Origin", "*");
+
+  if (method === "OPTIONS") {
+    res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.statusCode = 204;
+    res.end();
+    return;
+  }
 
   for (const route of routes) {
     const params = route.match(path);
