@@ -6,7 +6,8 @@
 
 - **baton-dashboard CLI**: new `baton-dashboard` command providing a client-side multi-instance view of running Baton daemons (#105)
 - **baton-log section**: WORKFLOW files now support an append-only `baton-log` section in progress comments for persistent agent notes across turns (#104)
-- **[Baton Implementer] prefix**: WORKFLOW.md now requires the `[Baton Implementer]` visible prefix on agent-generated comments to distinguish them from human comments (#102)
+- **[Baton Implementer] / [Baton Reviewer] prefix**: WORKFLOW files now require a visible `[Baton Implementer]` or `[Baton Reviewer]` prefix on all agent-generated comments so human and agent activity are distinguishable even when they share the same GitHub account (#102)
+- **Dual-workflow reviewer example**: `examples/WORKFLOW.copilot.md` is redesigned as a dedicated Copilot reviewer workflow that pairs with the Claude implementer workflow. The reviewer runs in an isolated workspace, inspects the pushed PR head, posts structured findings tagged with `<!-- baton-reviewer-summary -->` / `<!-- baton-reviewer-finding -->` markers (`[must]`/`[ask]`/`[imo]`), and routes the issue back to "In Progress" or forward to "In Review". Agent-only review loops are capped at 3 handoffs before escalating to human review (#89)
 
 ## Bug Fixes
 
@@ -19,9 +20,9 @@
 ## Documentation
 
 - Document `baton-dashboard` CLI usage in README.md (#107)
-- Rewrite example existing-PR feedback loop handling in WORKFLOW examples (#87)
+- Document running dual-workflow processes together in README.md (separate workspace roots, shared "Agent Review" status) (#89)
+- Improve existing-PR feedback loop in WORKFLOW examples: structured three-source approach (PR comments, unresolved inline review threads, review summaries) with `<!-- baton-agent-reply -->` markers (#87)
 - Add base-branch conflict handling guidance to example feedback loop
-- Design dual-workflow agent coordination with shared-account markers (#89)
 
 ## Internal
 
