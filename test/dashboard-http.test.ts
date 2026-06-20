@@ -88,6 +88,19 @@ describe("dashboard HTTP server", () => {
     }
   });
 
+  it("GET / includes Array.isArray guards for running/retrying to handle malformed payloads", async () => {
+    const { server, baseUrl } = await startTestServer();
+    try {
+      const res = await fetch(`${baseUrl}/`);
+      const body = await res.text();
+      expect(body).toContain("Array.isArray(snap.running)");
+      expect(body).toContain("Array.isArray(snap.retrying)");
+      expect(body).toContain("Number.isFinite");
+    } finally {
+      await server.close();
+    }
+  });
+
   it("script-safe TARGETS: </script> in name/URL does not break the script block", async () => {
     const server = await startDashboardServer({
       host: "127.0.0.1",

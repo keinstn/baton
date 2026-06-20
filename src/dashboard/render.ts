@@ -147,30 +147,40 @@ async function fetchAll() {
     const bodyEl = document.getElementById("body-" + t.name);
 
     if (result.status === "fulfilled") {
-      const snap = result.value.data;
-      const runCount = (snap.running || []).length;
-      const retryCount = (snap.retrying || []).length;
-      const tokens = (snap.agent_totals || {}).total_tokens || 0;
+      try {
+        const snap = result.value.data ?? {};
+        const running = Array.isArray(snap.running) ? snap.running : [];
+        const retrying = Array.isArray(snap.retrying) ? snap.retrying : [];
+        const totals = snap.agent_totals && typeof snap.agent_totals === "object" ? snap.agent_totals : {};
+        const inputTokens = Number.isFinite(+totals.input_tokens) ? +totals.input_tokens : 0;
+        const tokens = Number.isFinite(+totals.total_tokens) ? +totals.total_tokens : 0;
+        const runCount = running.length;
+        const retryCount = retrying.length;
 
-      aggUp++;
-      aggRunning += runCount;
-      aggRetrying += retryCount;
-      aggTokens += tokens;
+        aggUp++;
+        aggRunning += runCount;
+        aggRetrying += retryCount;
+        aggTokens += tokens;
 
-      statusEl.textContent = "up";
-      statusEl.className = "instance-status status-up";
+        statusEl.textContent = "up";
+        statusEl.className = "instance-status status-up";
 
-      bodyEl.innerHTML =
-        \`<div class="stats-grid" style="margin-bottom:1rem">
-          <div class="stat-card"><div class="stat-label">Running</div><div class="stat-value">\${runCount}</div></div>
-          <div class="stat-card"><div class="stat-label">Retrying</div><div class="stat-value">\${retryCount}</div></div>
-          <div class="stat-card"><div class="stat-label">Input tokens</div><div class="stat-value">\${(snap.agent_totals || {}).input_tokens || 0}</div></div>
-          <div class="stat-card"><div class="stat-label">Total tokens</div><div class="stat-value">\${tokens}</div></div>
-        </div>
-        <div class="section-header"><h2>Running</h2><span class="badge badge-running">\${runCount}</span></div>
-        \${renderRunning(snap.running || [])}
-        <div class="section-header" style="margin-top:1rem"><h2>Retrying</h2><span class="badge badge-retry">\${retryCount}</span></div>
-        \${renderRetrying(snap.retrying || [])}\`;
+        bodyEl.innerHTML =
+          \`<div class="stats-grid" style="margin-bottom:1rem">
+            <div class="stat-card"><div class="stat-label">Running</div><div class="stat-value">\${runCount}</div></div>
+            <div class="stat-card"><div class="stat-label">Retrying</div><div class="stat-value">\${retryCount}</div></div>
+            <div class="stat-card"><div class="stat-label">Input tokens</div><div class="stat-value">\${inputTokens}</div></div>
+            <div class="stat-card"><div class="stat-label">Total tokens</div><div class="stat-value">\${tokens}</div></div>
+          </div>
+          <div class="section-header"><h2>Running</h2><span class="badge badge-running">\${runCount}</span></div>
+          \${renderRunning(running)}
+          <div class="section-header" style="margin-top:1rem"><h2>Retrying</h2><span class="badge badge-retry">\${retryCount}</span></div>
+          \${renderRetrying(retrying)}\`;
+      } catch (err) {
+        statusEl.textContent = "up";
+        statusEl.className = "instance-status status-up";
+        bodyEl.innerHTML = \`<p class="empty">Error rendering data: \${esc(String(err))}</p>\`;
+      }
     } else {
       statusEl.textContent = "down";
       statusEl.className = "instance-status status-down";
