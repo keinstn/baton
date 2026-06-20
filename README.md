@@ -143,9 +143,10 @@ If you run the two example workflows together, start two Baton processes against
 project board and add an `Agent Review` status. The Claude implementation workflow hands an item
 from `In Progress` to `Agent Review`; the Copilot review workflow either returns it to
 `In Progress` for fixes or advances it to `In Review` for human review. Give each process its own
-`workspace.root` (and its own dashboard `server.port`, if enabled) so they never share a working
-tree — the review workflow re-syncs to the pushed PR head, so it does not need the implementer's
-local state.
+`workspace.root` and its own `server.port` so they never share a working tree and are individually
+reachable via `/api/v1/state`; then point `baton-dashboard` at both URLs to view them together on
+a single page. The review workflow re-syncs to the pushed PR head, so it does not need the
+implementer's local state.
 
 **2. Set environment variables**
 
@@ -169,6 +170,42 @@ npm exec baton -- WORKFLOW.md
 Baton polls the board on every `polling.interval_ms` tick, dispatches eligible issues to agent workers, and logs structured JSON to stderr. Send `SIGINT` or `SIGTERM` to shut down gracefully.
 
 Set `LOG_LEVEL=debug` to enable verbose diagnostic output (subprocess PIDs, agent events, GitHub API timing, tick cycle details).
+
+**4. Monitor with `baton-dashboard` (optional)**
+
+`baton-dashboard` is a companion CLI that serves a single-page view aggregating live state from
+one or more Baton instances. The browser fetches each instance's `/api/v1/state` directly via
+`Promise.allSettled` (no server-side polling) and the page auto-refreshes every 30 seconds.
+
+Create a config file (default path: `./baton-dashboard.yaml`):
+
+```yaml
+server:
+  host: "127.0.0.1"
+  port: 8800
+
+targets:
+  - name: "implementer"
+    url: "http://127.0.0.1:8787"
+  - name: "reviewer"
+    url: "http://127.0.0.1:8788"
+```
+
+See [`examples/baton-dashboard.yaml`](examples/baton-dashboard.yaml) for the full reference
+example. `server.host` defaults to `127.0.0.1` and `server.port` defaults to `8888` when omitted.
+
+```sh
+npm exec baton-dashboard                       # uses ./baton-dashboard.yaml
+npm exec baton-dashboard -- config.yaml        # explicit config path
+npm exec baton-dashboard -- --port 9000        # override server.port
+```
+
+| Flag | Description |
+|---|---|
+| `--port N` / `-p N` | Override `server.port` from the config file |
+
+Each Baton instance must have `server.port` configured (in `WORKFLOW.md` front matter or via
+`--port`) for the dashboard to reach its `/api/v1/state` endpoint.
 
 ## How it works (one paragraph)
 
