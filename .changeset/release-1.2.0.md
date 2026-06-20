@@ -22,7 +22,7 @@
 - Document `baton-dashboard` CLI usage in README.md (#107)
 - Document running dual-workflow processes together in README.md (separate workspace roots, shared "Agent Review" status) (#89)
 - Improve existing-PR feedback loop in WORKFLOW examples: structured three-source approach (PR comments, unresolved inline review threads, review summaries) with `<!-- baton-agent-reply -->` markers (#87)
-- Add base-branch conflict handling guidance to example feedback loop
+- Harden `examples/WORKFLOW.md` before_run hook and feedback-loop path: detect in-progress git operations before branch switch; use `git show-ref` to distinguish known local branch from first-time checkout; fetch actual base branch name from PR metadata instead of hard-coding `main`; inspect and clean workspace state before merging; run `git merge --no-edit origin/$BASE_BRANCH` and resolve conflicts by intent; push once at the end so merge commit and feedback changes land together
 
 ## Internal
 
