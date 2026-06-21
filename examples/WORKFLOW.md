@@ -104,9 +104,13 @@ Rules:
     this single push carries both any merge commit and your feedback changes) and move the issue
     status to the chosen review state.
 - Actionable feedback means:
-  - PR conversation comments on `issues/$PR_NUMBER/comments` that do not themselves contain
-    `<!-- baton-agent-reply source_comment_id=<comment_id> -->` and do not already have a later
-    agent follow-up comment containing that marker for that comment's ID
+  - PR conversation comments on `issues/$PR_NUMBER/comments` — including comments containing
+    `<!-- baton-reviewer-finding -->` or `<!-- baton-reviewer-summary -->`, which are Reviewer
+    findings that MUST be addressed with code changes and a `baton-agent-reply` response — that
+    do not themselves start with `<!-- baton-agent-reply` or `<!-- baton-progress` (those are the
+    Implementer's own comment types and should be skipped) and do not already have a later agent
+    follow-up comment containing `<!-- baton-agent-reply source_comment_id=<comment_id> -->` for
+    that comment's ID
   - unresolved inline review threads, fetched via `gh api graphql` — use `{{ issue.repository }}`
     as the owner/repo value (split into owner/repo inline as needed, e.g.
     `GH_OWNER=$(echo "{{ issue.repository }}" | cut -d/ -f1)`,
