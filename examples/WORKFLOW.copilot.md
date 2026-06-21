@@ -69,12 +69,12 @@ Rules:
   GitHub account. Do not rely on comment author identity to tell human and agent activity apart;
   use Baton markers instead.
 - Resolve the Baton branch and confirm there is an open PR for it:
-  `BRANCH="agent/$BATON_ISSUE_IDENTIFIER"`
-  `OPEN_PR_COUNT=$(gh pr list --repo "$BATON_ISSUE_REPO" --head "$BRANCH" --state open --json number --jq 'length')`
+  `BRANCH="agent/{{ issue.identifier }}"`
+  `OPEN_PR_COUNT=$(gh pr list --repo "{{ issue.repository }}" --head "$BRANCH" --state open --json number --jq 'length')`
 - If no open PR exists for the Baton branch, treat that as an implementation-side blocker:
   update the progress comment, move the issue status back to "In Progress", and stop.
 - Once an open PR exists, resolve the PR number:
-  `PR_NUMBER=$(gh pr view "$BRANCH" --repo "$BATON_ISSUE_REPO" --json number --jq '.number')`
+  `PR_NUMBER=$(gh pr view "$BRANCH" --repo "{{ issue.repository }}" --json number --jq '.number')`
 - Review the PR as it exists now. Use `gh pr diff`, `gh pr view`, `gh pr checks`, `gh api`, and
   local read-only inspection as needed. Take existing review threads and comments into account so
   you do not re-raise feedback that is already resolved in the current diff.
@@ -138,8 +138,8 @@ Rules:
     is already present, do not post it again
   - create or update exactly one reviewer summary comment: search existing PR comments for
     `<!-- baton-reviewer-summary status=` first; if found, edit it in place via
-    `gh api repos/$BATON_ISSUE_REPO/issues/comments/<comment_id> --method PATCH -f body='...'`;
-    if not found, post a new one with `gh pr comment $PR_NUMBER --repo $BATON_ISSUE_REPO --body '...'`.
+    `gh api repos/{{ issue.repository }}/issues/comments/<comment_id> --method PATCH -f body='...'`;
+    if not found, post a new one with `gh pr comment $PR_NUMBER --repo {{ issue.repository }} --body '...'`.
     The comment must contain `<!-- baton-reviewer-summary status=needs_changes handoff_count=<n> -->`
     and a visible `[Baton Reviewer]` prefix plus `Managed by Baton; do not edit the marker line
     manually.`. Each finding comment should normally use `[must]`; use `[ask]` instead when you
