@@ -75,9 +75,9 @@ Rules:
   run as a feedback loop. If the issue status is "Todo", move it to "In Progress" on the project
   board before starting.
   - Resolve the Baton branch, PR number, and PR base branch:
-    `BRANCH="agent/$BATON_ISSUE_IDENTIFIER"`
-    `PR_NUMBER=$(gh pr view "$BRANCH" --repo "$BATON_ISSUE_REPO" --json number --jq '.number')`
-    `BASE_BRANCH=$(gh pr view "$BRANCH" --repo "$BATON_ISSUE_REPO" --json baseRefName --jq '.baseRefName')`
+    `BRANCH="agent/{{ issue.identifier }}"`
+    `PR_NUMBER=$(gh pr view "$BRANCH" --repo "{{ issue.repository }}" --json number --jq '.number')`
+    `BASE_BRANCH=$(gh pr view "$BRANCH" --repo "{{ issue.repository }}" --json baseRefName --jq '.baseRefName')`
   - Before starting a new base merge, inspect the current workspace state:
     - if a merge, rebase, or cherry-pick is already in progress, finish it or abort it
       intentionally before continuing; do not start a second merge on top of an unfinished one
@@ -98,7 +98,7 @@ Rules:
     latest reviewer comment that does not already have a later `<!-- baton-agent-reply -->` reply
     in the same thread as the item to address, and post the reply using the first comment in the
     thread (`databaseId` of `comments.nodes[0]`)
-    (`gh api repos/$BATON_ISSUE_REPO/pulls/$PR_NUMBER/comments/<root_databaseId>/replies -f body='<!-- baton-agent-reply --> [Baton Implementer] ...'`);
+    (`gh api repos/{{ issue.repository }}/pulls/$PR_NUMBER/comments/<root_databaseId>/replies -f body='<!-- baton-agent-reply --> [Baton Implementer] ...'`);
     do not resolve the threads.
   - When all feedback is resolved, push the branch with a normal `git push` (never force-push;
     this single push carries both any merge commit and your feedback changes) and move the issue
@@ -111,8 +111,10 @@ Rules:
     Implementer's own comment types and should be skipped) and do not already have a later agent
     follow-up comment containing `<!-- baton-agent-reply source_comment_id=<comment_id> -->` for
     that comment's ID
-  - unresolved inline review threads, fetched via `gh api graphql` — split `$BATON_ISSUE_REPO`
-    into owner/repo (`GH_OWNER=${BATON_ISSUE_REPO%%/*}`, `GH_REPO=${BATON_ISSUE_REPO##*/}`) and
+  - unresolved inline review threads, fetched via `gh api graphql` — use `{{ issue.repository }}`
+    as the owner/repo value (split into owner/repo inline as needed, e.g.
+    `GH_OWNER=$(echo "{{ issue.repository }}" | cut -d/ -f1)`,
+    `GH_REPO=$(echo "{{ issue.repository }}" | cut -d/ -f2)`) and
     request fields for `reviewThreads` and `comments(first:10)` including pagination metadata
     (`pageInfo { hasNextPage endCursor }`), then paginate review threads and thread comments
     further as needed until you can identify the latest reviewer comment that does not already
