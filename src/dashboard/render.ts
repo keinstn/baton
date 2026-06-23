@@ -336,37 +336,42 @@ async function fetchAll() {
     var bodyEl  = document.getElementById("body-"  + t.name);
 
     if (result.status === "fulfilled") {
-      var snap = result.value.data || {};
-      var running  = Array.isArray(snap.running)  ? snap.running  : [];
-      var retrying = Array.isArray(snap.retrying) ? snap.retrying : [];
-      var totals   = snap.agent_totals && typeof snap.agent_totals === "object" ? snap.agent_totals : {};
-      var tokens  = Number.isFinite(+totals.total_tokens)  ? +totals.total_tokens  : 0;
-      var input   = Number.isFinite(+totals.input_tokens)  ? +totals.input_tokens  : 0;
-      var output  = Number.isFinite(+totals.output_tokens) ? +totals.output_tokens : 0;
+      try {
+        var snap = result.value.data || {};
+        var running  = Array.isArray(snap.running)  ? snap.running  : [];
+        var retrying = Array.isArray(snap.retrying) ? snap.retrying : [];
+        var totals   = snap.agent_totals && typeof snap.agent_totals === "object" ? snap.agent_totals : {};
+        var tokens  = Number.isFinite(+totals.total_tokens)  ? +totals.total_tokens  : 0;
+        var input   = Number.isFinite(+totals.input_tokens)  ? +totals.input_tokens  : 0;
+        var output  = Number.isFinite(+totals.output_tokens) ? +totals.output_tokens : 0;
 
-      aggUp++;
-      aggRunning  += running.length;
-      aggRetrying += retrying.length;
-      aggTokens   += tokens;
-      aggInput    += input;
-      aggOutput   += output;
+        aggUp++;
+        aggRunning  += running.length;
+        aggRetrying += retrying.length;
+        aggTokens   += tokens;
+        aggInput    += input;
+        aggOutput   += output;
 
-      if (badgeEl) { badgeEl.textContent = "up"; badgeEl.className = "status-badge status-up"; }
-      if (bodyEl) {
-        bodyEl.innerHTML =
-          '<div class="mini-stats">' +
-            '<div class="mini-stat"><div class="mini-stat-val">' + running.length + '</div><div class="mini-stat-lbl">running</div></div>' +
-            '<div class="mini-stat"><div class="mini-stat-val">' + retrying.length + '</div><div class="mini-stat-lbl">retrying</div></div>' +
-            '<div class="mini-stat"><div class="mini-stat-val">' + tokens + '</div><div class="mini-stat-lbl">tokens</div></div>' +
-          '</div>' +
-          '<div>' +
-            '<div class="section-label">Running <span class="sl-count run">' + running.length + '</span></div>' +
-            '<div class="card-list">' + renderRunning(running) + '</div>' +
-          '</div>' +
-          '<div>' +
-            '<div class="section-label">Retrying <span class="sl-count retry">' + retrying.length + '</span></div>' +
-            '<div class="card-list">' + renderRetrying(retrying) + '</div>' +
-          '</div>';
+        if (badgeEl) { badgeEl.textContent = "up"; badgeEl.className = "status-badge status-up"; }
+        if (bodyEl) {
+          bodyEl.innerHTML =
+            '<div class="mini-stats">' +
+              '<div class="mini-stat"><div class="mini-stat-val">' + running.length + '</div><div class="mini-stat-lbl">running</div></div>' +
+              '<div class="mini-stat"><div class="mini-stat-val">' + retrying.length + '</div><div class="mini-stat-lbl">retrying</div></div>' +
+              '<div class="mini-stat"><div class="mini-stat-val">' + tokens + '</div><div class="mini-stat-lbl">tokens</div></div>' +
+            '</div>' +
+            '<div>' +
+              '<div class="section-label">Running <span class="sl-count run">' + running.length + '</span></div>' +
+              '<div class="card-list">' + renderRunning(running) + '</div>' +
+            '</div>' +
+            '<div>' +
+              '<div class="section-label">Retrying <span class="sl-count retry">' + retrying.length + '</span></div>' +
+              '<div class="card-list">' + renderRetrying(retrying) + '</div>' +
+            '</div>';
+        }
+      } catch (e) {
+        if (badgeEl) { badgeEl.textContent = "err"; badgeEl.className = "status-badge status-down"; }
+        if (bodyEl) bodyEl.innerHTML = '<p class="empty">Render error: ' + esc(String(e)) + '</p>';
       }
     } else {
       if (badgeEl) { badgeEl.textContent = "down"; badgeEl.className = "status-badge status-down"; }
