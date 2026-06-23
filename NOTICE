@@ -1,0 +1,19 @@
+Baton
+Copyright 2026 keinstn
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not
+use this work except in compliance with the License. You may obtain a copy
+of the License at:
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+This product is a port of the Symphony service specification and reference
+implementation by OpenAI (https://github.com/openai/symphony), licensed under
+the Apache License, Version 2.0. The orchestration architecture, workflow
+specification, and state machine design are adapted from Symphony. Baton
+replaces the Linear tracker adapter with GitHub Projects v2 and the Codex
+app-server agent adapter with Claude Code CLI and GitHub Copilot CLI.
+
+All trademarks are property of their respective owners. This project drives
+third-party CLIs as external subprocesses and is not affiliated with or
+endorsed by any of those vendors.

@@ -307,4 +307,4 @@ Baton uses [Changesets](https://github.com/changesets/changesets) to manage vers
 
 ## License
 
-Apache License 2.0 (same as Symphony).
+[Apache License 2.0](LICENSE) (same as Symphony).
