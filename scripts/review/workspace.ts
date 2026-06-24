@@ -59,6 +59,11 @@ export async function setupWorkspace(
         timeoutMs: config.workspace.hookTimeoutMs,
       });
       if (!result.ok) {
+        logger.error("after_create hook failed", {
+          workspace: workspacePath,
+          timedOut: result.timedOut,
+          code: result.code,
+        });
         try {
           await rm(workspacePath, { recursive: true, force: true });
         } catch (err) {
@@ -81,6 +86,11 @@ export async function setupWorkspace(
       timeoutMs: config.workspace.hookTimeoutMs,
     });
     if (!result.ok) {
+      logger.error("before_run hook failed", {
+        workspace: workspacePath,
+        timedOut: result.timedOut,
+        code: result.code,
+      });
       throw new Error(
         `before_run hook failed (timedOut=${result.timedOut} code=${result.code}): ${result.output.slice(0, 500)}`,
       );
