@@ -14,5 +14,13 @@ export function parseDecisions(text: string): IssueDecision[] {
   if (!Array.isArray(parsed)) {
     throw new Error("eval: expected JSON array of IssueDecision");
   }
-  return parsed as IssueDecision[];
+  const decisions = parsed as IssueDecision[];
+  for (const d of decisions) {
+    if (typeof d.number !== "number") {
+      throw new Error(
+        `eval: decision.number must be a number, got ${JSON.stringify(d.number)}`,
+      );
+    }
+  }
+  return decisions;
 }

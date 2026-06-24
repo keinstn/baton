@@ -14,13 +14,21 @@ async function checkResponse(res: Response, context: string): Promise<void> {
   }
 }
 
+function splitRepo(repo: string): [string, string] {
+  const parts = repo.split("/");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    throw new Error(`invalid repo format (expected "owner/name"): ${repo}`);
+  }
+  return parts as [string, string];
+}
+
 export async function addLabel(
   repo: string,
   issueNumber: number,
   label: string,
   token: string,
 ): Promise<void> {
-  const [owner, name] = repo.split("/");
+  const [owner, name] = splitRepo(repo);
   const res = await fetch(
     `${GITHUB_API}/repos/${owner}/${name}/issues/${issueNumber}/labels`,
     {
@@ -38,7 +46,7 @@ export async function postComment(
   body: string,
   token: string,
 ): Promise<void> {
-  const [owner, name] = repo.split("/");
+  const [owner, name] = splitRepo(repo);
   const res = await fetch(
     `${GITHUB_API}/repos/${owner}/${name}/issues/${issueNumber}/comments`,
     {
