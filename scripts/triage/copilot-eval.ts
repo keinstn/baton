@@ -57,6 +57,7 @@ export function createCopilotEvaluator(config: EvaluatorConfig): Evaluator {
       if (config.model) {
         command += ` --model ${shellQuote(config.model)}`;
       }
+      // --deny-tool='*' crashes Copilot CLI v1.0.64; default to no denied tools
       for (const tool of config.denyTools ?? []) {
         command += ` --deny-tool=${shellQuote(tool)}`;
       }
