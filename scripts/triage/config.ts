@@ -12,6 +12,7 @@ export interface TrackerTriageConfig {
   statusField: string;
   todoState: string;
   aiReadyLabel: string;
+  repos: string[] | null;
 }
 
 export interface EvaluatorConfig {
@@ -138,6 +139,11 @@ export function parseTriageConfig(
   }
 
   const tokenRaw = str(t.token) ?? "$GITHUB_TOKEN";
+  const reposRaw = t.repos;
+  const repos: string[] | null =
+    Array.isArray(reposRaw) && reposRaw.every((x) => typeof x === "string")
+      ? (reposRaw as string[])
+      : null;
   const tracker: TrackerTriageConfig = {
     token: resolveEnvValue(tokenRaw, env),
     endpoint: resolveStr(t.endpoint, env) ?? "https://api.github.com/graphql",
@@ -147,6 +153,7 @@ export function parseTriageConfig(
     statusField: resolveStr(t.status_field, env) ?? "Status",
     todoState: resolveStr(t.todo_state, env) ?? "Todo",
     aiReadyLabel: resolveStr(t.ai_ready_label, env) ?? "ai-ready",
+    repos,
   };
 
   const e = section(raw, "evaluator");
