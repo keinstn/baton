@@ -13,7 +13,7 @@ export function runOnce(
   return new Promise((resolve, reject) => {
     const useStdin = stdin !== undefined;
     const proc = spawn("bash", ["-lc", command], {
-      stdio: [useStdin ? "pipe" : "ignore", "pipe", "pipe"],
+      stdio: [useStdin ? "pipe" : "ignore", "pipe", "ignore"],
       detached: true,
       windowsHide: true,
     });
