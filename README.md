@@ -97,6 +97,9 @@ Go to the target repository → **Issues** → **Labels** → **New label**. Cre
 `ai-ready` (or whatever you list under `required_labels` in `WORKFLOW.md`). Baton only
 dispatches issues that carry this label.
 
+> **Tip:** The [Triage](#triage-automated-labeling) companion script can automate this step —
+> it evaluates issues with an LLM and applies the label automatically.
+
 **4. Generate a Personal Access Token**
 
 Go to **Settings** → **Developer settings** → **Personal access tokens** → **Fine-grained tokens**
@@ -206,6 +209,47 @@ npm exec baton-dashboard -- --port 9000        # override server.port
 
 Each Baton instance must have `server.port` configured (in `WORKFLOW.md` front matter or via
 `--port`) for the dashboard to reach its `/api/v1/state` endpoint.
+
+## Triage (automated labeling)
+
+The `scripts/triage/` companion CLI automates the `ai-ready` label gate described in
+[Board Setup §3](#3-create-a-label). Instead of manually reviewing issues and applying the
+label, the triage script fetches issues from the configured GitHub Projects v2 board, evaluates
+them with an LLM (Claude or Copilot), and either applies the `ai-ready` label to ready issues
+or posts a clarification comment on ambiguous ones.
+
+**Minimal `TRIAGE.md` config**
+
+```yaml
+tracker:
+  token: $GITHUB_TOKEN
+  owner: my-org
+  owner_type: organization
+  project_number: 5
+  todo_state: Todo
+  ai_ready_label: ai-ready
+
+evaluator:
+  kind: claude_code   # or: copilot
+```
+
+See [`examples/TRIAGE.md`](examples/TRIAGE.md) for the full reference config with inline
+comments (model override, timeout, repo filter, and the LiquidJS prompt template).
+
+**Run once**
+
+```sh
+node --experimental-strip-types scripts/triage/index.ts [TRIAGE.md]
+```
+
+**Run on a schedule (cron)**
+
+```sh
+*/30 * * * * cd /path/to/repo && node --experimental-strip-types scripts/triage/index.ts TRIAGE.md
+```
+
+Running every 30 minutes keeps the `ai-ready` queue populated without human intervention — pair
+it with a Baton instance polling the same board.
 
 ## How it works (one paragraph)
 
