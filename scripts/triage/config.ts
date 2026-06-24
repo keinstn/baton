@@ -140,7 +140,7 @@ export function parseTriageConfig(
     );
   }
 
-  const tokenRaw = str(t.token) ?? "$GITHUB_TOKEN";
+  const tokenRaw = str(t.token) ?? "$GITHUB_TOKEN"; // literal string passed to resolveEnvValue below, which expands $VAR — same lazy pattern as src/config/schema.ts
   const reposRaw = t.repos;
   const repos: string[] | null =
     Array.isArray(reposRaw) && reposRaw.every((x) => typeof x === "string")

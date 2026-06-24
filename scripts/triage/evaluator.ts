@@ -19,7 +19,7 @@ export interface Evaluator {
   ): Promise<IssueDecision[]>;
 }
 
-const liquid = new Liquid({ strictVariables: true });
+const liquid = new Liquid({ strictVariables: true }); // throws on undefined variables rather than silently rendering empty strings
 
 export async function renderPrompt(
   template: string,
