@@ -125,15 +125,18 @@ export class GitHubProjectsClient implements TrackerClient {
       let nextUrl: string | null =
         `${restBase}/repos/${owner}/${repo}/issues/${issueNumber}/dependencies/blocked_by?per_page=100`;
       while (nextUrl !== null) {
-        const resp = await this.fetchFn(nextUrl, { headers });
-        if (!resp.ok) break;
+        const resp = await this.fetchFn(nextUrl, {
+          headers,
+          signal: AbortSignal.timeout(NETWORK_TIMEOUT_MS),
+        });
+        if (!resp.ok) return [];
         let data: unknown;
         try {
           data = await resp.json();
         } catch {
-          break;
+          return [];
         }
-        if (!Array.isArray(data)) break;
+        if (!Array.isArray(data)) return [];
         for (const dep of data) {
           if (dep === null || typeof dep !== "object") continue;
           const nodeId =
@@ -165,7 +168,7 @@ export class GitHubProjectsClient implements TrackerClient {
         nextUrl = parseLinkNext(resp.headers.get("link"));
       }
     } catch {
-      return result;
+      return [];
     }
     return result;
   }
