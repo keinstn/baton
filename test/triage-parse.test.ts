@@ -74,4 +74,12 @@ describe("parseDecisions", () => {
       ),
     ).toThrow("eval: decision.number must be a number");
   });
+
+  it("throws when decision.decision is not a valid value", () => {
+    expect(() =>
+      parseDecisions(
+        JSON.stringify([{ number: 1, decision: "bad_value", reason: "x" }]),
+      ),
+    ).toThrow("eval: decision.decision must be one of");
+  });
 });
