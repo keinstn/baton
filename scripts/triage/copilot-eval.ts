@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
-import type { Issue } from "../../src/tracker/types.js";
 import { isRecord, shellQuote } from "../../src/util.js";
 import type { EvaluatorConfig } from "./config.js";
 import type { Evaluator, IssueDecision } from "./evaluator.js";
 import { renderPrompt } from "./evaluator.js";
+import type { TriageIssue } from "./fetcher.js";
 import { parseDecisions } from "./parse.js";
 import { runOnce } from "./subprocess.js";
 
@@ -38,7 +38,7 @@ function extractContent(stdout: string): string {
 export function createCopilotEvaluator(config: EvaluatorConfig): Evaluator {
   return {
     async evaluate(
-      issues: Issue[],
+      issues: TriageIssue[],
       promptTemplate: string,
       repository: string,
     ): Promise<IssueDecision[]> {

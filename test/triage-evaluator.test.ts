@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { EvaluatorConfig } from "../scripts/triage/config.js";
-import { createEvaluator } from "../scripts/triage/evaluator.js";
-import type { Issue } from "../src/tracker/types.js";
+import { createEvaluator, renderPrompt } from "../scripts/triage/evaluator.js";
+import type { TriageIssue } from "../scripts/triage/fetcher.js";
 
 // Mock the subprocess module so no real CLIs are spawned
 vi.mock("../scripts/triage/subprocess.js", () => ({
@@ -12,7 +12,7 @@ import { runOnce } from "../scripts/triage/subprocess.js";
 
 const mockRunOnce = vi.mocked(runOnce);
 
-function makeIssue(overrides: Partial<Issue> = {}): Issue {
+function makeIssue(overrides: Partial<TriageIssue> = {}): TriageIssue {
   return {
     id: "I_1",
     itemId: "PVTI_1",
@@ -29,6 +29,7 @@ function makeIssue(overrides: Partial<Issue> = {}): Issue {
     blockedBy: [],
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: null,
+    openSubIssues: [],
     ...overrides,
   };
 }
@@ -433,5 +434,65 @@ describe("copilot-eval adapter", () => {
 
     const [, , timeoutMs] = mockRunOnce.mock.calls.at(0) ?? [];
     expect(timeoutMs).toBe(99_000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// renderPrompt — openSubIssues rendering
+// ---------------------------------------------------------------------------
+
+const SUB_ISSUE_TEMPLATE = `{% for issue in issues %}**Open sub-issues ({{ issue.openSubIssues.size }}):** {% if issue.openSubIssues.size > 0 %}{% for s in issue.openSubIssues %}#{{ s.number }} {{ s.title }}{% unless forloop.last %}, {% endunless %}{% endfor %}{% else %}none{% endif %}{% endfor %}`;
+
+describe("renderPrompt — openSubIssues", () => {
+  it("renders 'none' when openSubIssues is empty", async () => {
+    const result = await renderPrompt(
+      SUB_ISSUE_TEMPLATE,
+      [makeIssue({ openSubIssues: [] })],
+      "acme/repo",
+    );
+    expect(result).toBe("**Open sub-issues (0):** none");
+  });
+
+  it("renders sub-issue numbers and titles when openSubIssues is non-empty", async () => {
+    const result = await renderPrompt(
+      SUB_ISSUE_TEMPLATE,
+      [
+        makeIssue({
+          openSubIssues: [
+            {
+              number: 10,
+              title: "Sub A",
+              url: "https://github.com/acme/repo/issues/10",
+            },
+            {
+              number: 11,
+              title: "Sub B",
+              url: "https://github.com/acme/repo/issues/11",
+            },
+          ],
+        }),
+      ],
+      "acme/repo",
+    );
+    expect(result).toBe("**Open sub-issues (2):** #10 Sub A, #11 Sub B");
+  });
+
+  it("renders a single sub-issue without a trailing comma", async () => {
+    const result = await renderPrompt(
+      SUB_ISSUE_TEMPLATE,
+      [
+        makeIssue({
+          openSubIssues: [
+            {
+              number: 5,
+              title: "Only one",
+              url: "https://github.com/acme/repo/issues/5",
+            },
+          ],
+        }),
+      ],
+      "acme/repo",
+    );
+    expect(result).toBe("**Open sub-issues (1):** #5 Only one");
   });
 });

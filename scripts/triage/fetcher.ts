@@ -3,6 +3,30 @@ import { GitHubProjectsClient } from "../../src/tracker/github-projects.js";
 import type { Issue } from "../../src/tracker/types.js";
 import type { TrackerTriageConfig } from "./config.js";
 
+export interface SubIssueRef {
+  number: number;
+  title: string;
+  url: string;
+}
+
+export interface TriageIssue extends Issue {
+  openSubIssues: SubIssueRef[];
+}
+
+function parseLinkNext(link: string | null): string | null {
+  if (!link) return null;
+  const match = link.match(/<([^>]+)>;\s*rel="next"/);
+  return match?.[1] ?? null;
+}
+
+// GHES uses /api/v3 for REST; github.com has no /v3 segment.
+// Replace /api/graphql → /api/v3 first, then strip a bare /graphql suffix.
+function restBaseFromEndpoint(endpoint: string): string {
+  return endpoint
+    .replace(/\/api\/graphql$/, "/api/v3")
+    .replace(/\/graphql$/, "");
+}
+
 function toTrackerConfig(config: TrackerTriageConfig): TrackerConfig {
   return {
     kind: "github_projects",
@@ -20,14 +44,86 @@ function toTrackerConfig(config: TrackerTriageConfig): TrackerConfig {
   };
 }
 
+async function fetchOpenSubIssues(
+  restBase: string,
+  token: string | null,
+  owner: string,
+  repo: string,
+  issueNumber: number,
+  fetchFn: typeof fetch,
+): Promise<SubIssueRef[]> {
+  const headers: Record<string, string> = {
+    Accept: "application/vnd.github+json",
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const result: SubIssueRef[] = [];
+  let nextUrl: string | null =
+    `${restBase}/repos/${owner}/${repo}/issues/${issueNumber}/sub_issues?per_page=100`;
+
+  while (nextUrl !== null) {
+    const resp = await fetchFn(nextUrl, { headers });
+    if (!resp.ok) break;
+    let data: unknown;
+    try {
+      data = await resp.json();
+    } catch {
+      break;
+    }
+    if (!Array.isArray(data)) break;
+    for (const s of data) {
+      if (
+        s !== null &&
+        typeof s === "object" &&
+        "number" in s &&
+        typeof s.number === "number" &&
+        "title" in s &&
+        typeof s.title === "string" &&
+        "html_url" in s &&
+        typeof s.html_url === "string" &&
+        "state" in s &&
+        s.state === "open"
+      ) {
+        result.push({ number: s.number, title: s.title, url: s.html_url });
+      }
+    }
+    nextUrl = parseLinkNext(resp.headers.get("link"));
+  }
+
+  return result;
+}
+
 export async function fetchAndGroup(
   config: TrackerTriageConfig,
   fetchFn?: typeof fetch,
-): Promise<Map<string, Issue[]>> {
-  const client = new GitHubProjectsClient(toTrackerConfig(config), fetchFn);
+): Promise<Map<string, TriageIssue[]>> {
+  const fn = fetchFn ?? globalThis.fetch;
+  const client = new GitHubProjectsClient(toTrackerConfig(config), fn);
   const issues = await client.fetchIssuesByStates([config.todoState]);
-  const map = new Map<string, Issue[]>();
+
+  const restBase = restBaseFromEndpoint(config.endpoint);
+
+  // Sequential to avoid hitting GitHub secondary rate limits on concurrent bursts.
+  const triageIssues: TriageIssue[] = [];
   for (const issue of issues) {
+    const parts = issue.repository.split("/");
+    const owner = parts[0] ?? "";
+    const repo = parts[1] ?? "";
+    const openSubIssues = await fetchOpenSubIssues(
+      restBase,
+      config.token,
+      owner,
+      repo,
+      issue.number,
+      fn,
+    );
+    triageIssues.push({ ...issue, openSubIssues });
+  }
+
+  const map = new Map<string, TriageIssue[]>();
+  for (const issue of triageIssues) {
     let group = map.get(issue.repository);
     if (!group) {
       group = [];

@@ -28,6 +28,38 @@ function gqlResponse(data: unknown): Response {
   } as unknown as Response;
 }
 
+function restResponse(subIssues: unknown[] = [], linkNext?: string): Response {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => subIssues,
+    headers: {
+      get: (name: string) =>
+        name === "link" && linkNext ? `<${linkNext}>; rel="next"` : null,
+    },
+  } as unknown as Response;
+}
+
+function restJsonError(): Response {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => {
+      throw new SyntaxError("Unexpected token");
+    },
+    headers: { get: () => null },
+  } as unknown as Response;
+}
+
+function restError(status = 404): Response {
+  return {
+    ok: false,
+    status,
+    json: async () => ({ message: "Not Found" }),
+    headers: { get: () => null },
+  } as unknown as Response;
+}
+
 const PROJECT_DATA = {
   organization: {
     projectV2: {
@@ -105,6 +137,9 @@ describe("fetchAndGroup", () => {
           false,
         ),
       ),
+      restResponse(),
+      restResponse(),
+      restResponse(),
     ]);
     const result = await fetchAndGroup(baseConfig(), fetch);
     expect([...result.keys()].sort()).toEqual(["acme/alpha", "acme/beta"]);
@@ -122,6 +157,7 @@ describe("fetchAndGroup", () => {
           false,
         ),
       ),
+      restResponse(),
     ]);
     const result = await fetchAndGroup(baseConfig(), fetch);
     expect(result.get("acme/repo")?.map((i) => i.number)).toEqual([1]);
@@ -135,6 +171,7 @@ describe("fetchAndGroup", () => {
         itemsPage([item(1, "acme/alpha"), item(2, "acme/beta")], null, false),
       ),
     );
+    fn.mockResolvedValueOnce(restResponse());
     const result = await fetchAndGroup(
       baseConfig({ repos: ["acme/alpha"] }),
       fn as unknown as typeof fetch,
@@ -153,9 +190,180 @@ describe("fetchAndGroup", () => {
           false,
         ),
       ),
+      restResponse(),
+      restResponse(),
     ]);
     const result = await fetchAndGroup(baseConfig(), fetch);
     expect(result.size).toBe(1);
     expect(result.get("acme/monorepo")?.map((i) => i.number)).toEqual([10, 20]);
+  });
+
+  it("attaches openSubIssues from REST response", async () => {
+    const subIssues = [
+      {
+        number: 10,
+        title: "Sub A",
+        html_url: "https://github.com/acme/repo/issues/10",
+        state: "open",
+      },
+      {
+        number: 11,
+        title: "Sub B",
+        html_url: "https://github.com/acme/repo/issues/11",
+        state: "open",
+      },
+    ];
+    const fetch = mockFetch([
+      gqlResponse(PROJECT_DATA),
+      gqlResponse(itemsPage([item(1, "acme/repo")], null, false)),
+      restResponse(subIssues),
+    ]);
+    const result = await fetchAndGroup(baseConfig(), fetch);
+    const issues = result.get("acme/repo");
+    expect(issues).toHaveLength(1);
+    expect(issues?.[0]?.openSubIssues).toEqual([
+      {
+        number: 10,
+        title: "Sub A",
+        url: "https://github.com/acme/repo/issues/10",
+      },
+      {
+        number: 11,
+        title: "Sub B",
+        url: "https://github.com/acme/repo/issues/11",
+      },
+    ]);
+  });
+
+  it("excludes closed sub-issues from openSubIssues", async () => {
+    const subIssues = [
+      {
+        number: 10,
+        title: "Open sub",
+        html_url: "https://github.com/acme/repo/issues/10",
+        state: "open",
+      },
+      {
+        number: 11,
+        title: "Closed sub",
+        html_url: "https://github.com/acme/repo/issues/11",
+        state: "closed",
+      },
+    ];
+    const fetch = mockFetch([
+      gqlResponse(PROJECT_DATA),
+      gqlResponse(itemsPage([item(1, "acme/repo")], null, false)),
+      restResponse(subIssues),
+    ]);
+    const result = await fetchAndGroup(baseConfig(), fetch);
+    const issues = result.get("acme/repo");
+    expect(issues?.[0]?.openSubIssues).toEqual([
+      {
+        number: 10,
+        title: "Open sub",
+        url: "https://github.com/acme/repo/issues/10",
+      },
+    ]);
+  });
+
+  it("returns empty openSubIssues when REST returns an error", async () => {
+    const fetch = mockFetch([
+      gqlResponse(PROJECT_DATA),
+      gqlResponse(itemsPage([item(1, "acme/repo")], null, false)),
+      restError(404),
+    ]);
+    const result = await fetchAndGroup(baseConfig(), fetch);
+    const issues = result.get("acme/repo");
+    expect(issues?.[0]?.openSubIssues).toEqual([]);
+  });
+
+  it("passes the token in the Authorization header for sub-issues requests", async () => {
+    const fn = vi.fn();
+    fn.mockResolvedValueOnce(gqlResponse(PROJECT_DATA));
+    fn.mockResolvedValueOnce(
+      gqlResponse(itemsPage([item(1, "acme/repo")], null, false)),
+    );
+    fn.mockResolvedValueOnce(restResponse());
+    await fetchAndGroup(
+      baseConfig({ token: "my-token" }),
+      fn as unknown as typeof fetch,
+    );
+
+    const calls = fn.mock.calls;
+    // The last call is the sub-issues REST request
+    const restCall = calls.find(
+      ([url]: [string]) =>
+        typeof url === "string" && url.includes("/sub_issues"),
+    );
+    expect(restCall?.[1]?.headers?.Authorization).toBe("Bearer my-token");
+  });
+
+  it("returns empty openSubIssues when resp.json() throws (non-JSON body)", async () => {
+    const fetch = mockFetch([
+      gqlResponse(PROJECT_DATA),
+      gqlResponse(itemsPage([item(1, "acme/repo")], null, false)),
+      restJsonError(),
+    ]);
+    const result = await fetchAndGroup(baseConfig(), fetch);
+    expect(result.get("acme/repo")?.[0]?.openSubIssues).toEqual([]);
+  });
+
+  it("uses /api/v3 REST base for GHES endpoints", async () => {
+    const fn = vi.fn();
+    fn.mockResolvedValueOnce(gqlResponse(PROJECT_DATA));
+    fn.mockResolvedValueOnce(
+      gqlResponse(itemsPage([item(1, "acme/repo")], null, false)),
+    );
+    fn.mockResolvedValueOnce(restResponse());
+    await fetchAndGroup(
+      baseConfig({ endpoint: "https://ghes.example.com/api/graphql" }),
+      fn as unknown as typeof fetch,
+    );
+    const restCall = (fn.mock.calls as [string, unknown][]).find(([url]) =>
+      url.includes("/sub_issues"),
+    );
+    expect(restCall?.[0]).toContain("https://ghes.example.com/api/v3/");
+  });
+
+  it("follows Link header to fetch all pages of sub-issues", async () => {
+    const page1 = [
+      {
+        number: 1,
+        title: "Sub 1",
+        html_url: "https://github.com/acme/repo/issues/1",
+        state: "open",
+      },
+    ];
+    const page2 = [
+      {
+        number: 2,
+        title: "Sub 2",
+        html_url: "https://github.com/acme/repo/issues/2",
+        state: "open",
+      },
+    ];
+    const fetch = mockFetch([
+      gqlResponse(PROJECT_DATA),
+      gqlResponse(itemsPage([item(5, "acme/repo")], null, false)),
+      restResponse(
+        page1,
+        "https://api.github.com/repos/acme/repo/issues/5/sub_issues?per_page=100&page=2",
+      ),
+      restResponse(page2),
+    ]);
+    const result = await fetchAndGroup(baseConfig(), fetch);
+    const issues = result.get("acme/repo");
+    expect(issues?.[0]?.openSubIssues).toEqual([
+      {
+        number: 1,
+        title: "Sub 1",
+        url: "https://github.com/acme/repo/issues/1",
+      },
+      {
+        number: 2,
+        title: "Sub 2",
+        url: "https://github.com/acme/repo/issues/2",
+      },
+    ]);
   });
 });

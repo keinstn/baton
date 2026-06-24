@@ -93,6 +93,7 @@ Issues to evaluate:
 **URL:** {{ issue.url }}
 **Labels:** {{ issue.labels | join: ", " }}
 **Blocked by:** {% if issue.blockedBy.size > 0 %}{% for b in issue.blockedBy %}{{ b.identifier }} ({{ b.state }}, terminal={{ b.terminal }}){% unless forloop.last %}, {% endunless %}{% endfor %}{% else %}none{% endif %}
+**Open sub-issues ({{ issue.openSubIssues.size }}):** {% if issue.openSubIssues.size > 0 %}{% for s in issue.openSubIssues %}#{{ s.number }} {{ s.title }}{% unless forloop.last %}, {% endunless %}{% endfor %}{% else %}none{% endif %}
 
 {{ issue.description }}
 {% endfor %}
