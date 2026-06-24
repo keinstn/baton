@@ -43,7 +43,7 @@ export function createClaudeEvaluator(config: EvaluatorConfig): Evaluator {
 
       const permissionMode = config.permissionMode;
       const denyTools = config.denyTools ?? ["*"]; // deny-all by default; triage must opt in explicitly to avoid unintended tool access
-      let command = `${config.command} -p --output-format stream-json --permission-mode ${shellQuote(permissionMode)} --disallowedTools ${shellQuote(denyTools.join(","))}`;
+      let command = `${config.command} -p --verbose --output-format stream-json --permission-mode ${shellQuote(permissionMode)} --disallowedTools ${shellQuote(denyTools.join(","))}`;
       if (config.model) {
         command += ` --model ${shellQuote(config.model)}`;
       }
