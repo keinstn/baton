@@ -15,6 +15,15 @@ function gqlResponse(data: unknown): Response {
   } as unknown as Response;
 }
 
+function restResponse(items: unknown[] = []): Response {
+  return {
+    ok: true,
+    status: 200,
+    headers: { get: () => null },
+    json: async () => items,
+  } as unknown as Response;
+}
+
 const PROJECT_DATA = {
   organization: {
     projectV2: {
@@ -113,14 +122,16 @@ describe("project resolution (SPEC §11.2)", () => {
     const { client: c, fetchMock } = client([
       gqlResponse(PROJECT_DATA),
       gqlResponse(itemsPage([item(1, "Todo")], null, false)),
+      restResponse(),
       gqlResponse(itemsPage([item(1, "Todo")], null, false)),
+      restResponse(),
     ]);
     await c.fetchCandidateIssues();
     await c.fetchCandidateIssues();
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
     expect(sentQuery(fetchMock, 0)).toContain("BatonProject");
     expect(sentQuery(fetchMock, 1)).toContain("BatonItems");
-    expect(sentQuery(fetchMock, 2)).toContain("BatonItems");
+    expect(sentQuery(fetchMock, 3)).toContain("BatonItems");
   });
 
   it("honors owner_type user", async () => {
@@ -287,6 +298,132 @@ describe("candidate fetch and normalization (SPEC §11.2-11.3)", () => {
     expect(await c.fetchIssuesByStates([])).toEqual([]);
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("populates blockedBy from REST dependencies API", async () => {
+    const blockedByData = [
+      {
+        node_id: "I_blocker",
+        number: 149,
+        state: "open",
+        repository_url: "https://api.github.com/repos/acme/baton",
+      },
+    ];
+    const { client: c } = client([
+      gqlResponse(PROJECT_DATA),
+      gqlResponse(itemsPage([item(1, "Todo")], null, false)),
+      restResponse(blockedByData),
+    ]);
+    const issues = await c.fetchCandidateIssues();
+    expect(issues[0]?.blockedBy).toEqual([
+      {
+        id: "I_blocker",
+        identifier: "baton-149",
+        state: "open",
+        terminal: false,
+      },
+    ]);
+  });
+
+  it("sets terminal=true when the blocking issue is closed", async () => {
+    const blockedByData = [
+      {
+        node_id: "I_closed",
+        number: 50,
+        state: "closed",
+        repository_url: "https://api.github.com/repos/acme/baton",
+      },
+    ];
+    const { client: c } = client([
+      gqlResponse(PROJECT_DATA),
+      gqlResponse(itemsPage([item(1, "Todo")], null, false)),
+      restResponse(blockedByData),
+    ]);
+    const issues = await c.fetchCandidateIssues();
+    expect(issues[0]?.blockedBy).toEqual([
+      {
+        id: "I_closed",
+        identifier: "baton-50",
+        state: "closed",
+        terminal: true,
+      },
+    ]);
+  });
+
+  it("returns blockedBy=[] when the dependencies endpoint returns an empty array", async () => {
+    const { client: c } = client([
+      gqlResponse(PROJECT_DATA),
+      gqlResponse(itemsPage([item(1, "Todo")], null, false)),
+      restResponse([]),
+    ]);
+    const issues = await c.fetchCandidateIssues();
+    expect(issues[0]?.blockedBy).toEqual([]);
+  });
+
+  it("returns blockedBy=[] when the dependencies endpoint returns non-ok", async () => {
+    const failResponse = {
+      ok: false,
+      status: 404,
+      headers: { get: () => null },
+      json: async () => ({}),
+    } as unknown as Response;
+    const { client: c } = client([
+      gqlResponse(PROJECT_DATA),
+      gqlResponse(itemsPage([item(1, "Todo")], null, false)),
+      failResponse,
+    ]);
+    const issues = await c.fetchCandidateIssues();
+    expect(issues[0]?.blockedBy).toEqual([]);
+  });
+
+  it("paginates blockedBy via Link header", async () => {
+    const page1 = {
+      ok: true,
+      status: 200,
+      headers: {
+        get: (name: string) =>
+          name === "link"
+            ? '<https://api.github.com/repos/acme/repo/issues/1/dependencies/blocked_by?page=2>; rel="next"'
+            : null,
+      },
+      json: async () => [
+        {
+          node_id: "I_a",
+          number: 10,
+          state: "open",
+          repository_url: "https://api.github.com/repos/acme/repo",
+        },
+      ],
+    } as unknown as Response;
+    const page2 = {
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      json: async () => [
+        {
+          node_id: "I_b",
+          number: 20,
+          state: "closed",
+          repository_url: "https://api.github.com/repos/acme/repo",
+        },
+      ],
+    } as unknown as Response;
+    const { client: c } = client([
+      gqlResponse(PROJECT_DATA),
+      gqlResponse(itemsPage([item(1, "Todo")], null, false)),
+      page1,
+      page2,
+    ]);
+    const issues = await c.fetchCandidateIssues();
+    expect(issues[0]?.blockedBy).toHaveLength(2);
+    expect(issues[0]?.blockedBy[0]).toMatchObject({
+      id: "I_a",
+      terminal: false,
+    });
+    expect(issues[0]?.blockedBy[1]).toMatchObject({
+      id: "I_b",
+      terminal: true,
+    });
+  });
 });
 
 function errorResponse(
@@ -344,14 +481,15 @@ describe("error mapping (SPEC §11.4)", () => {
       .mockResolvedValueOnce(gqlResponse(PROJECT_DATA))
       .mockResolvedValueOnce(
         gqlResponse(itemsPage([item(1, "Todo")], null, false)),
-      );
+      )
+      .mockResolvedValueOnce(restResponse());
     const c = new GitHubProjectsClient(
       trackerConfig(),
       fetchMock as unknown as typeof fetch,
     );
     const issues = await c.fetchCandidateIssues();
     expect(issues).toHaveLength(1);
-    expect(fetchMock).toHaveBeenCalledTimes(3); // 1 GOAWAY + 1 project resolve retry + 1 items
+    expect(fetchMock).toHaveBeenCalledTimes(4); // 1 GOAWAY + 1 project resolve retry + 1 items + 1 blocked_by
   });
 
   it("propagates as github_api_request when GOAWAY retry also fails", async () => {
@@ -384,14 +522,15 @@ describe("error mapping (SPEC §11.4)", () => {
       .mockResolvedValueOnce(gqlResponse(PROJECT_DATA))
       .mockResolvedValueOnce(
         gqlResponse(itemsPage([item(1, "Todo")], null, false)),
-      );
+      )
+      .mockResolvedValueOnce(restResponse());
     const c = new GitHubProjectsClient(
       trackerConfig(),
       fetchMock as unknown as typeof fetch,
     );
     const issues = await c.fetchCandidateIssues();
     expect(issues).toHaveLength(1);
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it("retries once on ETIMEDOUT and succeeds", async () => {
@@ -406,14 +545,15 @@ describe("error mapping (SPEC §11.4)", () => {
       .mockResolvedValueOnce(gqlResponse(PROJECT_DATA))
       .mockResolvedValueOnce(
         gqlResponse(itemsPage([item(1, "Todo")], null, false)),
-      );
+      )
+      .mockResolvedValueOnce(restResponse());
     const c = new GitHubProjectsClient(
       trackerConfig(),
       fetchMock as unknown as typeof fetch,
     );
     const issues = await c.fetchCandidateIssues();
     expect(issues).toHaveLength(1);
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it("does not retry AbortError / TimeoutError (not a TCP-level failure)", async () => {
@@ -457,14 +597,15 @@ describe("error mapping (SPEC §11.4)", () => {
       .mockResolvedValueOnce(gqlResponse(PROJECT_DATA))
       .mockResolvedValueOnce(
         gqlResponse(itemsPage([item(1, "Todo")], null, false)),
-      );
+      )
+      .mockResolvedValueOnce(restResponse());
     const c = new GitHubProjectsClient(
       trackerConfig(),
       fetchMock as unknown as typeof fetch,
     );
     const issues = await c.fetchCandidateIssues();
     expect(issues).toHaveLength(1);
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it("retries once on HTTP 503 and succeeds", async () => {
@@ -474,14 +615,15 @@ describe("error mapping (SPEC §11.4)", () => {
       .mockResolvedValueOnce(gqlResponse(PROJECT_DATA))
       .mockResolvedValueOnce(
         gqlResponse(itemsPage([item(1, "Todo")], null, false)),
-      );
+      )
+      .mockResolvedValueOnce(restResponse());
     const c = new GitHubProjectsClient(
       trackerConfig(),
       fetchMock as unknown as typeof fetch,
     );
     const issues = await c.fetchCandidateIssues();
     expect(issues).toHaveLength(1);
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it("does not retry HTTP 401", async () => {

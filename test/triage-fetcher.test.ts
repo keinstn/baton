@@ -140,6 +140,9 @@ describe("fetchAndGroup", () => {
       restResponse(),
       restResponse(),
       restResponse(),
+      restResponse(),
+      restResponse(),
+      restResponse(),
     ]);
     const result = await fetchAndGroup(baseConfig(), fetch);
     expect([...result.keys()].sort()).toEqual(["acme/alpha", "acme/beta"]);
@@ -158,6 +161,7 @@ describe("fetchAndGroup", () => {
         ),
       ),
       restResponse(),
+      restResponse(),
     ]);
     const result = await fetchAndGroup(baseConfig(), fetch);
     expect(result.get("acme/repo")?.map((i) => i.number)).toEqual([1]);
@@ -171,6 +175,7 @@ describe("fetchAndGroup", () => {
         itemsPage([item(1, "acme/alpha"), item(2, "acme/beta")], null, false),
       ),
     );
+    fn.mockResolvedValueOnce(restResponse());
     fn.mockResolvedValueOnce(restResponse());
     const result = await fetchAndGroup(
       baseConfig({ repos: ["acme/alpha"] }),
@@ -190,6 +195,8 @@ describe("fetchAndGroup", () => {
           false,
         ),
       ),
+      restResponse(),
+      restResponse(),
       restResponse(),
       restResponse(),
     ]);
@@ -216,6 +223,7 @@ describe("fetchAndGroup", () => {
     const fetch = mockFetch([
       gqlResponse(PROJECT_DATA),
       gqlResponse(itemsPage([item(1, "acme/repo")], null, false)),
+      restResponse(),
       restResponse(subIssues),
     ]);
     const result = await fetchAndGroup(baseConfig(), fetch);
@@ -253,6 +261,7 @@ describe("fetchAndGroup", () => {
     const fetch = mockFetch([
       gqlResponse(PROJECT_DATA),
       gqlResponse(itemsPage([item(1, "acme/repo")], null, false)),
+      restResponse(),
       restResponse(subIssues),
     ]);
     const result = await fetchAndGroup(baseConfig(), fetch);
@@ -270,6 +279,7 @@ describe("fetchAndGroup", () => {
     const fetch = mockFetch([
       gqlResponse(PROJECT_DATA),
       gqlResponse(itemsPage([item(1, "acme/repo")], null, false)),
+      restResponse(),
       restError(404),
     ]);
     const result = await fetchAndGroup(baseConfig(), fetch);
@@ -283,6 +293,7 @@ describe("fetchAndGroup", () => {
     fn.mockResolvedValueOnce(
       gqlResponse(itemsPage([item(1, "acme/repo")], null, false)),
     );
+    fn.mockResolvedValueOnce(restResponse());
     fn.mockResolvedValueOnce(restResponse());
     await fetchAndGroup(
       baseConfig({ token: "my-token" }),
@@ -302,6 +313,7 @@ describe("fetchAndGroup", () => {
     const fetch = mockFetch([
       gqlResponse(PROJECT_DATA),
       gqlResponse(itemsPage([item(1, "acme/repo")], null, false)),
+      restResponse(),
       restJsonError(),
     ]);
     const result = await fetchAndGroup(baseConfig(), fetch);
@@ -314,6 +326,7 @@ describe("fetchAndGroup", () => {
     fn.mockResolvedValueOnce(
       gqlResponse(itemsPage([item(1, "acme/repo")], null, false)),
     );
+    fn.mockResolvedValueOnce(restResponse());
     fn.mockResolvedValueOnce(restResponse());
     await fetchAndGroup(
       baseConfig({ endpoint: "https://ghes.example.com/api/graphql" }),
@@ -345,6 +358,7 @@ describe("fetchAndGroup", () => {
     const fetch = mockFetch([
       gqlResponse(PROJECT_DATA),
       gqlResponse(itemsPage([item(5, "acme/repo")], null, false)),
+      restResponse(),
       restResponse(
         page1,
         "https://api.github.com/repos/acme/repo/issues/5/sub_issues?per_page=100&page=2",
