@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.0
+
+### Minor Changes
+
+- 8322adc: Redesign the daemon dashboard with a 2-column dark terminal layout
+
+  The HTTP dashboard now renders a two-column dark "terminal" layout that surfaces running agents and recent activity more legibly. This affects the server-rendered views in `src/dashboard/render.ts` and `src/observability/dashboard.ts`.
+
 ## 1.2.2
 
 ### Patch Changes
