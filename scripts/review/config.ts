@@ -120,6 +120,11 @@ export function parseReviewConfig(
     activeStatesRaw.every((x) => typeof x === "string")
       ? (activeStatesRaw as string[])
       : [];
+  if (activeStates.length === 0) {
+    throw new Error(
+      "tracker.active_states is required and must be a non-empty string array in REVIEW.md",
+    );
+  }
 
   const reposRaw = t.repos;
   const repos: string[] | null =
