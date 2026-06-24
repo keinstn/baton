@@ -57,7 +57,7 @@ export function createCopilotEvaluator(config: EvaluatorConfig): Evaluator {
       if (config.model) {
         command += ` --model ${shellQuote(config.model)}`;
       }
-      for (const tool of config.denyTools ?? ["*"]) {
+      for (const tool of config.denyTools ?? []) {
         command += ` --deny-tool=${shellQuote(tool)}`;
       }
 

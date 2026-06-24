@@ -16,12 +16,15 @@ function extractResult(stdout: string): string {
     } catch {
       continue;
     }
-    if (
-      isRecord(msg) &&
-      msg.type === "result" &&
-      typeof msg.result === "string"
-    ) {
-      return msg.result as string;
+    if (isRecord(msg) && msg.type === "result") {
+      if (msg.is_error === true) {
+        throw new Error(
+          `claude returned an error: ${typeof msg.result === "string" ? msg.result : "(no message)"}`,
+        );
+      }
+      if (typeof msg.result === "string") {
+        return msg.result as string;
+      }
     }
   }
   throw new Error(

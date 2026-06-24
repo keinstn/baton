@@ -184,6 +184,38 @@ describe("claude-eval adapter", () => {
     ).rejects.toThrow();
   });
 
+  it("throws with error prose when is_error=true result line is present", async () => {
+    const stdout = JSON.stringify({
+      type: "result",
+      is_error: true,
+      result: "Rate limit exceeded",
+    });
+    mockRunOnce.mockResolvedValue(stdout);
+
+    const ev = createEvaluator(CLAUDE_CONFIG);
+    await expect(
+      ev.evaluate([makeIssue()], TEMPLATE, "acme/repo"),
+    ).rejects.toThrow("claude returned an error: Rate limit exceeded");
+  });
+
+  it("throws on first is_error=true result line even when a non-error line follows", async () => {
+    const resultText = JSON.stringify(BASE_DECISIONS);
+    const stdout = [
+      JSON.stringify({
+        type: "result",
+        is_error: true,
+        result: "partial error",
+      }),
+      JSON.stringify({ type: "result", result: resultText }),
+    ].join("\n");
+    mockRunOnce.mockResolvedValue(stdout);
+
+    const ev = createEvaluator(CLAUDE_CONFIG);
+    await expect(
+      ev.evaluate([makeIssue()], TEMPLATE, "acme/repo"),
+    ).rejects.toThrow("claude returned an error: partial error");
+  });
+
   it("passes timeout from config to runOnce", async () => {
     const stdout = JSON.stringify({
       type: "result",
@@ -319,6 +351,39 @@ describe("copilot-eval adapter", () => {
 
     const [command] = mockRunOnce.mock.calls.at(0) ?? [];
     expect(command).not.toContain("--model");
+  });
+
+  it("does not include --deny-tool when denyTools is not configured", async () => {
+    const stdout = JSON.stringify({
+      type: "assistant.message",
+      data: { content: JSON.stringify(BASE_DECISIONS) },
+    });
+    mockRunOnce.mockResolvedValue(stdout);
+
+    const ev = createEvaluator(COPILOT_CONFIG);
+    await ev.evaluate([makeIssue()], TEMPLATE, "acme/repo");
+
+    const [command] = mockRunOnce.mock.calls.at(0) ?? [];
+    expect(command).not.toContain("--deny-tool");
+  });
+
+  it("includes --deny-tool flags when denyTools is configured", async () => {
+    const stdout = JSON.stringify({
+      type: "assistant.message",
+      data: { content: JSON.stringify(BASE_DECISIONS) },
+    });
+    mockRunOnce.mockResolvedValue(stdout);
+
+    const config: EvaluatorConfig = {
+      ...COPILOT_CONFIG,
+      denyTools: ["shell", "filesystem"],
+    };
+    const ev = createEvaluator(config);
+    await ev.evaluate([makeIssue()], TEMPLATE, "acme/repo");
+
+    const [command] = mockRunOnce.mock.calls.at(0) ?? [];
+    expect(command).toContain("--deny-tool='shell'");
+    expect(command).toContain("--deny-tool='filesystem'");
   });
 
   it("throws when prompt exceeds 128 KiB", async () => {
