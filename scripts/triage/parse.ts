@@ -74,7 +74,11 @@ export function parseDecisions(text: string): IssueDecision[] {
   if (!Array.isArray(parsed)) {
     throw new Error("eval: expected JSON array of IssueDecision");
   }
-  const VALID_DECISIONS = ["ready", "not_ready", "needs_clarification"] as const;
+  const VALID_DECISIONS = [
+    "ready",
+    "not_ready",
+    "needs_clarification",
+  ] as const;
   const decisions = parsed as IssueDecision[];
   for (const d of decisions) {
     if (typeof d.number !== "number") {
