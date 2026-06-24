@@ -94,20 +94,21 @@ Rules:
     explicit, justified pushback). For PR conversation feedback, post any agent follow-up as a
     later PR comment with a marker of the form
     `<!-- baton-agent-reply source_comment_id=<comment_id> -->` so Baton can tell which
-    conversation comment has already been handled. For each actionable inline review thread, treat
-    the latest reviewer comment that does not already have a later `<!-- baton-agent-reply -->` reply
-    in the same thread as the item to address. After addressing the thread, post the reply using
-    the first comment in the thread (`databaseId` of `comments.nodes[0]`)
-    (`gh api repos/{{ issue.repository }}/pulls/$PR_NUMBER/comments/<root_databaseId>/replies -f body='<!-- baton-agent-reply --> [Baton Implementer] ...'`).
-    Then apply thread-type-specific handling based on the first comment body (`comments.nodes[0].body`):
+    conversation comment has already been handled. For each actionable inline review thread, apply
+    thread-type-specific handling based on the first comment body (`comments.nodes[0].body`):
     - **Bot thread** (first comment contains `<!-- baton-reviewer-finding`): if no
-      `baton-agent-reply` reply exists in the thread yet, address the finding and post the reply.
+      `baton-agent-reply` reply exists in the thread yet, address the finding and post the reply
+      using the first comment in the thread (`databaseId` of `comments.nodes[0]`)
+      (`gh api repos/{{ issue.repository }}/pulls/$PR_NUMBER/comments/<root_databaseId>/replies -f body='<!-- baton-agent-reply --> [Baton Implementer] ...'`).
       If a `baton-agent-reply` already exists (partial-failure recovery: a prior run posted the
       reply but `resolveReviewThread` failed), skip re-posting. In both cases, call
       `resolveReviewThread`. If the mutation fails, escalate: move the issue to "In Review" (not
       the chosen review state) and stop.
-    - **Human thread** (first comment does not contain `<!-- baton-reviewer-finding`): do not
-      resolve the thread; the posted reply is sufficient to mark it as addressed.
+    - **Human thread** (first comment does not contain `<!-- baton-reviewer-finding`): treat the
+      latest reviewer comment that does not already have a later `<!-- baton-agent-reply -->` reply
+      in the same thread as the item to address; post the reply using the first comment in the
+      thread. If the latest reviewer comment already has a `baton-agent-reply` reply, the thread
+      is already handled — skip it without resolving.
   - When all feedback is resolved, push the branch with a normal `git push` (never force-push;
     this single push carries both any merge commit and your feedback changes) and move the issue
     status to the chosen review state.
@@ -123,9 +124,7 @@ Rules:
     `GH_REPO=$(echo "{{ issue.repository }}" | cut -d/ -f2)`) and
     request fields for `reviewThreads` (including `isResolved`) and `comments(first:10)` including
     pagination metadata (`pageInfo { hasNextPage endCursor }`), then paginate review threads and
-    thread comments further as needed; a thread is actionable if `isResolved` is `false` and
-    the latest reviewer comment does not already have a later `<!-- baton-agent-reply -->` reply
-    in the same thread
+    thread comments further as needed; a thread is actionable if `isResolved` is `false`
   - the latest still-actionable top-level review summary per reviewer from
     `pulls/$PR_NUMBER/reviews`
   - paginate all list results; for top-level reviews, later `APPROVED` or `DISMISSED` reviews
