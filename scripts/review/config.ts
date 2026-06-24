@@ -32,6 +32,7 @@ export interface AgentConfig {
 export interface CopilotConfig {
   allowAllTools: boolean;
   allowTools: string[];
+  denyTools: string[];
 }
 
 export interface ClaudeCodeConfig {
@@ -222,6 +223,11 @@ export function parseReviewConfig(
       Array.isArray(cp.allow_tools) &&
       cp.allow_tools.every((x) => typeof x === "string")
         ? (cp.allow_tools as string[])
+        : [],
+    denyTools:
+      Array.isArray(cp.deny_tools) &&
+      cp.deny_tools.every((x) => typeof x === "string")
+        ? (cp.deny_tools as string[])
         : [],
   };
 

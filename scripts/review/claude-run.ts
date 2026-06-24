@@ -33,7 +33,7 @@ export function createClaudeReviewRunner(config: ReviewConfig): ReviewRunner {
       const { permissionMode, denyTools } = config.claudeCode;
       const effectiveDenyTools = denyTools.length > 0 ? denyTools : [];
 
-      let command = `claude -p --output-format stream-json --permission-mode ${shellQuote(permissionMode)}`;
+      let command = `claude -p --output-format stream-json --verbose --permission-mode ${shellQuote(permissionMode)}`;
       if (effectiveDenyTools.length > 0) {
         command += ` --disallowedTools ${shellQuote(effectiveDenyTools.join(","))}`;
       }
