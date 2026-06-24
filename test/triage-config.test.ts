@@ -21,6 +21,7 @@ describe("parseTriageConfig defaults", () => {
     expect(config.tracker.statusField).toBe("Status");
     expect(config.tracker.todoState).toBe("Todo");
     expect(config.tracker.aiReadyLabel).toBe("ai-ready");
+    expect(config.tracker.needsClarificationLabel).toBeNull();
     expect(config.tracker.owner).toBe("acme");
     expect(config.tracker.projectNumber).toBe(1);
   });
@@ -425,5 +426,57 @@ describe("loadTriageConfig", () => {
     await expect(
       loadTriageConfig("/nonexistent/path/TRIAGE.md"),
     ).rejects.toThrow(/cannot read triage file/);
+  });
+});
+
+describe("tracker.needs_clarification_label", () => {
+  it("defaults to null when omitted", () => {
+    const config = parseTriageConfig(BASE_RAW, {});
+    expect(config.tracker.needsClarificationLabel).toBeNull();
+  });
+
+  it("parses an explicit label value", () => {
+    const config = parseTriageConfig(
+      {
+        tracker: {
+          owner: "acme",
+          project_number: 1,
+          needs_clarification_label: "needs-clarification",
+        },
+        evaluator: { kind: "claude_code" },
+      },
+      {},
+    );
+    expect(config.tracker.needsClarificationLabel).toBe("needs-clarification");
+  });
+
+  it("resolves the label from a $VAR", () => {
+    const config = parseTriageConfig(
+      {
+        tracker: {
+          owner: "acme",
+          project_number: 1,
+          needs_clarification_label: "$CLARIFICATION_LABEL",
+        },
+        evaluator: { kind: "claude_code" },
+      },
+      { CLARIFICATION_LABEL: "awaiting-info" },
+    );
+    expect(config.tracker.needsClarificationLabel).toBe("awaiting-info");
+  });
+
+  it("resolves to null when the $VAR is unset", () => {
+    const config = parseTriageConfig(
+      {
+        tracker: {
+          owner: "acme",
+          project_number: 1,
+          needs_clarification_label: "$MISSING_VAR",
+        },
+        evaluator: { kind: "claude_code" },
+      },
+      {},
+    );
+    expect(config.tracker.needsClarificationLabel).toBeNull();
   });
 });

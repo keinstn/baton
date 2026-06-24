@@ -12,6 +12,7 @@ export interface TrackerTriageConfig {
   statusField: string;
   todoState: string;
   aiReadyLabel: string;
+  needsClarificationLabel: string | null;
   repos: string[] | null;
 }
 
@@ -155,6 +156,7 @@ export function parseTriageConfig(
     statusField: resolveStr(t.status_field, env) ?? "Status",
     todoState: resolveStr(t.todo_state, env) ?? "Todo",
     aiReadyLabel: resolveStr(t.ai_ready_label, env) ?? "ai-ready",
+    needsClarificationLabel: resolveStr(t.needs_clarification_label, env),
     repos,
   };
 
