@@ -252,58 +252,6 @@ npm run triage [TRIAGE.md]
 Running every 30 minutes keeps the `ai-ready` queue populated without human intervention — pair
 it with a Baton instance polling the same board.
 
-## Review (agent PR review)
-
-The `scripts/review/` companion CLI automates the `Agent Review` loop for Baton-managed pull
-requests. It loads `REVIEW.md`, checks the configured GitHub Projects v2 board for issues in the
-review state, and runs the review agent against the current PR head inside an isolated workspace.
-
-**Minimal `REVIEW.md` config**
-
-```yaml
-tracker:
-  token: $GITHUB_TOKEN
-  owner: my-org
-  owner_type: organization
-  project_number: 5
-  status_field: Status
-  active_states: [Agent Review]
-
-workspace:
-  root: ~/baton_review_workspaces
-
-hooks:
-  after_create: |
-    gh repo clone "$BATON_ISSUE_REPO" . -- --depth 50 --no-single-branch
-  before_run: |
-    git fetch origin
-    BRANCH="agent/$BATON_ISSUE_IDENTIFIER"
-    git switch -C "$BRANCH" --track "origin/$BRANCH"
-
-agent:
-  kind: copilot   # or: claude_code
-```
-
-See [`examples/REVIEW.md`](examples/REVIEW.md) for the full reference config with inline
-comments, the review prompt template, and the branch-reset behavior used to review the pushed PR
-head.
-
-**Run once**
-
-```sh
-npm run review [REVIEW.md]
-# or: npx tsx scripts/review/index.ts [REVIEW.md]
-```
-
-**Run on a schedule (cron)**
-
-```sh
-*/5 * * * * cd /path/to/repo && npx tsx scripts/review/index.ts path/to/REVIEW.md
-```
-
-Running every few minutes keeps the review queue moving without manual intervention — pair it with
-a Baton implementation workflow that opens and updates the PR.
-
 ## How it works (one paragraph)
 
 Every `polling.interval_ms`, Baton queries the configured Project board for issues whose Status is
