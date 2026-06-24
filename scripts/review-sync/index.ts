@@ -3,6 +3,7 @@ import path from "node:path";
 import { Logger } from "../../src/observability/logger.js";
 import { ensureGitBashOnWindowsPath } from "../../src/platform/git-bash.js";
 import { isRecord, norm } from "../../src/util.js";
+import { classifyItem } from "./classify.js";
 import { loadReviewSyncConfig, type ReviewSyncConfig } from "./config.js";
 
 ensureGitBashOnWindowsPath();
@@ -73,7 +74,7 @@ query ReviewSyncItems($projectId: ID!, $after: String) {
         pageInfo { hasNextPage endCursor }
         nodes {
           id
-          fieldValues(first: 10) {
+          fieldValues(first: 50) {
             nodes {
               ... on ProjectV2ItemFieldSingleSelectValue {
                 name
@@ -451,50 +452,43 @@ async function main(): Promise<void> {
         numbers: openPRs.map((p) => p.number),
       });
 
-      if (openPRs.length === 0) {
-        itemLogger.info("skip: no linked open PRs");
-        skipped++;
-        continue;
-      }
-
-      let anyUnresolved = false;
-      let anyThreads = false;
-
+      const threadStatuses: Array<{
+        hasThreads: boolean;
+        allResolved: boolean;
+      }> = [];
       for (const pr of openPRs) {
-        const { hasThreads, allResolved } = await fetchPRThreadStatus(
-          cfg,
-          token,
-          pr.id,
-        );
-        if (hasThreads) {
-          anyThreads = true;
-          if (!allResolved) {
-            anyUnresolved = true;
-            break;
-          }
-        }
+        threadStatuses.push(await fetchPRThreadStatus(cfg, token, pr.id));
       }
 
-      if (!anyThreads) {
-        itemLogger.info("skip: no review threads on linked open PRs");
+      const decision = classifyItem(
+        threadStatuses,
+        item.currentState,
+        cfg.inProgressState,
+        cfg.inReviewState,
+      );
+
+      if (decision.action === "skip") {
+        itemLogger.info(
+          decision.reason === "no_open_prs"
+            ? "skip: no linked open PRs"
+            : "skip: no review threads on linked open PRs",
+        );
         skipped++;
         continue;
       }
 
-      const targetState = anyUnresolved
-        ? cfg.inProgressState
-        : cfg.inReviewState;
-      const optionId = meta.optionsByName.get(norm(targetState));
-      if (!optionId) {
-        throw new Error(`state "${targetState}" not found in project options`);
-      }
-
-      if (norm(item.currentState) === norm(targetState)) {
+      if (decision.action === "noop") {
         itemLogger.info("already in target state, skipping", {
-          state: targetState,
+          state: item.currentState,
         });
         alreadyInTarget++;
         continue;
+      }
+
+      const { targetState } = decision;
+      const optionId = meta.optionsByName.get(norm(targetState));
+      if (!optionId) {
+        throw new Error(`state "${targetState}" not found in project options`);
       }
 
       if (dryRun) {
@@ -528,6 +522,10 @@ async function main(): Promise<void> {
     errors,
     dry_run: dryRun,
   });
+
+  if (errors > 0) {
+    process.exitCode = 1;
+  }
 }
 
 main().catch((err) => {
