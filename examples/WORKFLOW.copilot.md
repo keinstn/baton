@@ -144,14 +144,21 @@ Rules:
        summary and progress comment to say `Human attention required: required Project fields
        (Handoff Count / Last Reviewed SHA) could not be resolved.` and move the issue to
        `In Review`.
-  - **Read current field values** from the project item:
+  - **Read current field values** from the project item. Use `first:50` (the API maximum per
+    page) and fetch `pageInfo.hasNextPage`; if the response was truncated, the target fields may
+    be absent — take the human-escalation path rather than silently defaulting:
     ```
     ITEM=$(gh api graphql \
-      -f query='query($id:ID!){node(id:$id){...on ProjectV2Item{fieldValues(first:20){nodes{
+      -f query='query($id:ID!){node(id:$id){...on ProjectV2Item{fieldValues(first:50){pageInfo{hasNextPage}nodes{
         ...on ProjectV2ItemFieldNumberValue{number field{...on ProjectV2FieldCommon{name}}}
         ...on ProjectV2ItemFieldTextValue{text field{...on ProjectV2FieldCommon{name}}}}}}}}' \
       -f id="{{ issue.item_id }}")
-    CURRENT_COUNT=$(echo "$ITEM" | jq -r '.data.node.fieldValues.nodes[]|select(.field.name=="Handoff Count")|.number // 0' | head -1)
+    if echo "$ITEM" | jq -e '.data.node.fieldValues.pageInfo.hasNextPage' | grep -q true; then
+      # fieldValues was truncated; target fields may be absent — take the human-escalation path
+      # (same as field-ID resolution failure: update reviewer summary and progress comment,
+      #  move issue to In Review, stop)
+    fi
+    CURRENT_COUNT=$(echo "$ITEM" | jq -r '.data.node.fieldValues.nodes[]|select(.field.name=="Handoff Count")|.number' | head -1)
     CURRENT_SHA=$(echo "$ITEM"   | jq -r '.data.node.fieldValues.nodes[]|select(.field.name=="Last Reviewed SHA")|.text // ""' | head -1)
     CURRENT_COUNT=${CURRENT_COUNT:-0}
     CURRENT_SHA=${CURRENT_SHA:-""}
@@ -163,7 +170,9 @@ Rules:
   - **Apply status-based reset** (prevents normal agent → human → agent round-trips from consuming
     the loop budget): check the existing reviewer summary comment's `status` field:
     - if `status=pass`: the prior cycle ended with approval; reset `Handoff Count` to `0` in the
-      project field and use `0` as the effective count for this run.
+      project field, set `CURRENT_SHA=""` locally (so the duplicate-increment check treats the
+      first commit of the new cycle as new even if the implementer pushed no new commits), and use
+      `0` as the effective count for this run.
     - if `status=needs_changes` or no prior summary comment: keep the value read from the project
       field as the effective count.
     - if `status` is present but cannot be parsed as `pass` or `needs_changes` (malformed or
@@ -221,6 +230,8 @@ Rules:
     `status=needs_changes`, say `Human attention required: agent review loop limit reached.`, and
     move the issue to "In Review"
 - If you do not find actionable issues:
+  - set `NEW_COUNT=$CURRENT_COUNT` (no increment on the approval path) and write both `$NEW_COUNT`
+    and `$PR_HEAD_SHA` to the project fields using the same mutation snippets as the send-back path
   - create or update exactly one reviewer summary comment using the same search-then-edit-or-create
     pattern: `<!-- baton-reviewer-summary status=pass -->` and a visible
     `[Baton Reviewer]` prefix plus `Managed by Baton; do not edit the marker line manually.`
