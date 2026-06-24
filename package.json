@@ -19,6 +19,7 @@
     "lint": "biome check .",
     "test": "vitest run",
     "triage": "tsx scripts/triage/index.ts",
+    "review-sync": "tsx scripts/review-sync/index.ts",
     "version-packages": "changeset version && npm install --package-lock-only"
   },
   "dependencies": {
