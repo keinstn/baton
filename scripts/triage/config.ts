@@ -20,7 +20,7 @@ export interface EvaluatorConfig {
   command: string;
   model: string | null;
   timeoutMs: number;
-  permissionMode?: string;
+  permissionMode: string;
   denyTools?: string[];
 }
 

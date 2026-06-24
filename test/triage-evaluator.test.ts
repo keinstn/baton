@@ -40,6 +40,7 @@ const CLAUDE_CONFIG: EvaluatorConfig = {
   command: "claude",
   model: null,
   timeoutMs: 30_000,
+  permissionMode: "bypassPermissions",
 };
 
 const COPILOT_CONFIG: EvaluatorConfig = {
@@ -47,6 +48,7 @@ const COPILOT_CONFIG: EvaluatorConfig = {
   command: "copilot",
   model: null,
   timeoutMs: 30_000,
+  permissionMode: "bypassPermissions",
 };
 
 // A minimal LiquidJS-compatible template

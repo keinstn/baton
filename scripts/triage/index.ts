@@ -51,7 +51,8 @@ async function main(): Promise<void> {
   let totalReady = 0;
   let totalClarification = 0;
   let totalSkipped = 0;
-  let totalErrors = 0;
+  let totalEvalErrors = 0;
+  let totalActionErrors = 0;
 
   for (const [repo, issues] of repoGroups) {
     const repoLogger = logger.child({ repo, issue_count: issues.length });
@@ -64,8 +65,17 @@ async function main(): Promise<void> {
       repoLogger.error("evaluation failed, skipping repo", {
         error: String(err),
       });
-      totalErrors++;
+      totalEvalErrors++;
       continue;
+    }
+
+    const missing = issues
+      .map((i) => i.number)
+      .filter((n) => !decisions.some((d) => d.number === n));
+    if (missing.length > 0) {
+      repoLogger.warn("evaluator returned no decision for some issues", {
+        missing_issue_numbers: missing,
+      });
     }
 
     for (const decision of decisions) {
@@ -82,7 +92,14 @@ async function main(): Promise<void> {
           );
           totalReady++;
         } else if (decision.decision === "needs_clarification") {
-          const comment = decision.comment ?? decision.reason;
+          const comment =
+            decision.comment ||
+            (() => {
+              issueLogger.warn(
+                "needs_clarification decision missing comment, falling back to reason",
+              );
+              return decision.reason;
+            })();
           issueLogger.info("posting clarification comment");
           await postComment(repo, decision.number, comment, token);
           totalClarification++;
@@ -94,7 +111,7 @@ async function main(): Promise<void> {
         }
       } catch (err) {
         issueLogger.error("action failed", { error: String(err) });
-        totalErrors++;
+        totalActionErrors++;
       }
     }
   }
@@ -103,7 +120,8 @@ async function main(): Promise<void> {
     ready: totalReady,
     needs_clarification: totalClarification,
     skipped: totalSkipped,
-    errors: totalErrors,
+    eval_errors: totalEvalErrors,
+    action_errors: totalActionErrors,
   });
 }
 
