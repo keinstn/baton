@@ -158,6 +158,10 @@ Rules:
       project field and use `0` as the effective count for this run.
     - if `status=needs_changes` or no prior summary comment: keep the value read from the project
       field as the effective count.
+    - if `status` is present but cannot be parsed as `pass` or `needs_changes` (malformed or
+      unrecognised value): update the reviewer summary and progress comment to say
+      `Human attention required: reviewer state could not be read safely.` and move the issue
+      to `In Review`.
   - **Duplicate-increment prevention**: when this workflow is about to return the issue to
     `In Progress`, compare `PR_HEAD_SHA` with `CURRENT_SHA`:
     - if they are equal, the agent is re-reviewing the same commit — do not increment the count.
