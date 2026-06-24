@@ -160,7 +160,10 @@ async function runIssue(
 
   await workspaceManager.runBeforeRun(issue, workspace.path);
 
-  const prompt = await liquid.parseAndRender(promptTemplate, { issue });
+  const prompt = await liquid.parseAndRender(promptTemplate, {
+    issue,
+    attempt: null,
+  });
   const session = await runner.startSession(workspace.path);
 
   try {
@@ -219,12 +222,17 @@ async function main(): Promise<void> {
   });
 
   const issues = await tracker.fetchIssuesByStates(config.tracker.activeStates);
-  logger.info("fetched issues", { issue_count: issues.length });
+  const runnableIssues = issues.filter((issue) => !issue.closed);
+  logger.info("fetched issues", {
+    issue_count: issues.length,
+    runnable_count: runnableIssues.length,
+    closed_skipped: issues.length - runnableIssues.length,
+  });
 
   let successCount = 0;
   let failureCount = 0;
 
-  for (const issue of issues) {
+  for (const issue of runnableIssues) {
     const issueLogger = logger.child({ issue: issue.identifier });
     try {
       await runIssue(
@@ -244,7 +252,7 @@ async function main(): Promise<void> {
   logger.info("review complete", {
     success: successCount,
     failed: failureCount,
-    total: issues.length,
+    total: runnableIssues.length,
   });
 
   if (failureCount > 0) {
