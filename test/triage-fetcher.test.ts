@@ -229,6 +229,7 @@ describe("fetchAndGroup", () => {
     const result = await fetchAndGroup(baseConfig(), fetch);
     const issues = result.get("acme/repo");
     expect(issues).toHaveLength(1);
+    expect(issues?.[0]?.subIssueLookupFailed).toBe(false);
     expect(issues?.[0]?.openSubIssues).toEqual([
       {
         number: 10,
@@ -266,6 +267,7 @@ describe("fetchAndGroup", () => {
     ]);
     const result = await fetchAndGroup(baseConfig(), fetch);
     const issues = result.get("acme/repo");
+    expect(issues?.[0]?.subIssueLookupFailed).toBe(false);
     expect(issues?.[0]?.openSubIssues).toEqual([
       {
         number: 10,
@@ -275,7 +277,7 @@ describe("fetchAndGroup", () => {
     ]);
   });
 
-  it("returns empty openSubIssues when REST returns an error", async () => {
+  it("sets subIssueLookupFailed when REST returns an error", async () => {
     const fetch = mockFetch([
       gqlResponse(PROJECT_DATA),
       gqlResponse(itemsPage([item(1, "acme/repo")], null, false)),
@@ -285,6 +287,8 @@ describe("fetchAndGroup", () => {
     const result = await fetchAndGroup(baseConfig(), fetch);
     const issues = result.get("acme/repo");
     expect(issues?.[0]?.openSubIssues).toEqual([]);
+    expect(issues?.[0]?.hasSubIssues).toBe(false);
+    expect(issues?.[0]?.subIssueLookupFailed).toBe(true);
   });
 
   it("passes the token in the Authorization header for sub-issues requests", async () => {
@@ -309,7 +313,7 @@ describe("fetchAndGroup", () => {
     expect(restCall?.[1]?.headers?.Authorization).toBe("Bearer my-token");
   });
 
-  it("returns empty openSubIssues when resp.json() throws (non-JSON body)", async () => {
+  it("sets subIssueLookupFailed when resp.json() throws (non-JSON body)", async () => {
     const fetch = mockFetch([
       gqlResponse(PROJECT_DATA),
       gqlResponse(itemsPage([item(1, "acme/repo")], null, false)),
@@ -318,6 +322,8 @@ describe("fetchAndGroup", () => {
     ]);
     const result = await fetchAndGroup(baseConfig(), fetch);
     expect(result.get("acme/repo")?.[0]?.openSubIssues).toEqual([]);
+    expect(result.get("acme/repo")?.[0]?.hasSubIssues).toBe(false);
+    expect(result.get("acme/repo")?.[0]?.subIssueLookupFailed).toBe(true);
   });
 
   it("uses /api/v3 REST base for GHES endpoints", async () => {

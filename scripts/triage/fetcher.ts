@@ -11,6 +11,8 @@ export interface SubIssueRef {
 
 export interface TriageIssue extends Issue {
   openSubIssues: SubIssueRef[];
+  hasSubIssues: boolean;
+  subIssueLookupFailed: boolean;
 }
 
 function parseLinkNext(link: string | null): string | null {
@@ -44,14 +46,18 @@ function toTrackerConfig(config: TrackerTriageConfig): TrackerConfig {
   };
 }
 
-async function fetchOpenSubIssues(
+async function fetchSubIssueInfo(
   restBase: string,
   token: string | null,
   owner: string,
   repo: string,
   issueNumber: number,
   fetchFn: typeof fetch,
-): Promise<SubIssueRef[]> {
+): Promise<{
+  hasSubIssues: boolean;
+  openSubIssues: SubIssueRef[];
+  subIssueLookupFailed: boolean;
+}> {
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
   };
@@ -59,20 +65,29 @@ async function fetchOpenSubIssues(
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const result: SubIssueRef[] = [];
+  let hasSubIssues = false;
+  let fetchError = false;
+  const openSubIssues: SubIssueRef[] = [];
   let nextUrl: string | null =
     `${restBase}/repos/${owner}/${repo}/issues/${issueNumber}/sub_issues?per_page=100`;
 
   while (nextUrl !== null) {
     const resp = await fetchFn(nextUrl, { headers });
-    if (!resp.ok) break;
+    if (!resp.ok) {
+      fetchError = true;
+      break;
+    }
     let data: unknown;
     try {
       data = await resp.json();
     } catch {
+      fetchError = true;
       break;
     }
-    if (!Array.isArray(data)) break;
+    if (!Array.isArray(data)) {
+      fetchError = true;
+      break;
+    }
     for (const s of data) {
       if (
         s !== null &&
@@ -84,15 +99,26 @@ async function fetchOpenSubIssues(
         "html_url" in s &&
         typeof s.html_url === "string" &&
         "state" in s &&
-        s.state === "open"
+        typeof s.state === "string"
       ) {
-        result.push({ number: s.number, title: s.title, url: s.html_url });
+        hasSubIssues = true;
+        if (s.state === "open") {
+          openSubIssues.push({
+            number: s.number,
+            title: s.title,
+            url: s.html_url,
+          });
+        }
       }
     }
     nextUrl = parseLinkNext(resp.headers.get("link"));
   }
 
-  return result;
+  return {
+    hasSubIssues,
+    openSubIssues,
+    subIssueLookupFailed: fetchError,
+  };
 }
 
 export async function fetchAndGroup(
@@ -111,15 +137,21 @@ export async function fetchAndGroup(
     const parts = issue.repository.split("/");
     const owner = parts[0] ?? "";
     const repo = parts[1] ?? "";
-    const openSubIssues = await fetchOpenSubIssues(
-      restBase,
-      config.token,
-      owner,
-      repo,
-      issue.number,
-      fn,
-    );
-    triageIssues.push({ ...issue, openSubIssues });
+    const { hasSubIssues, openSubIssues, subIssueLookupFailed } =
+      await fetchSubIssueInfo(
+        restBase,
+        config.token,
+        owner,
+        repo,
+        issue.number,
+        fn,
+      );
+    triageIssues.push({
+      ...issue,
+      openSubIssues,
+      hasSubIssues,
+      subIssueLookupFailed,
+    });
   }
 
   const map = new Map<string, TriageIssue[]>();
