@@ -11,6 +11,7 @@ export interface SubIssueRef {
 
 export interface TriageIssue extends Issue {
   openSubIssues: SubIssueRef[];
+  hasSubIssues: boolean;
 }
 
 function parseLinkNext(link: string | null): string | null {
@@ -44,14 +45,14 @@ function toTrackerConfig(config: TrackerTriageConfig): TrackerConfig {
   };
 }
 
-async function fetchOpenSubIssues(
+async function fetchSubIssueInfo(
   restBase: string,
   token: string | null,
   owner: string,
   repo: string,
   issueNumber: number,
   fetchFn: typeof fetch,
-): Promise<SubIssueRef[]> {
+): Promise<{ hasSubIssues: boolean; openSubIssues: SubIssueRef[] }> {
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
   };
@@ -59,7 +60,8 @@ async function fetchOpenSubIssues(
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const result: SubIssueRef[] = [];
+  let hasSubIssues = false;
+  const openSubIssues: SubIssueRef[] = [];
   let nextUrl: string | null =
     `${restBase}/repos/${owner}/${repo}/issues/${issueNumber}/sub_issues?per_page=100`;
 
@@ -84,15 +86,22 @@ async function fetchOpenSubIssues(
         "html_url" in s &&
         typeof s.html_url === "string" &&
         "state" in s &&
-        s.state === "open"
+        typeof s.state === "string"
       ) {
-        result.push({ number: s.number, title: s.title, url: s.html_url });
+        hasSubIssues = true;
+        if (s.state === "open") {
+          openSubIssues.push({
+            number: s.number,
+            title: s.title,
+            url: s.html_url,
+          });
+        }
       }
     }
     nextUrl = parseLinkNext(resp.headers.get("link"));
   }
 
-  return result;
+  return { hasSubIssues, openSubIssues };
 }
 
 export async function fetchAndGroup(
@@ -111,7 +120,7 @@ export async function fetchAndGroup(
     const parts = issue.repository.split("/");
     const owner = parts[0] ?? "";
     const repo = parts[1] ?? "";
-    const openSubIssues = await fetchOpenSubIssues(
+    const { hasSubIssues, openSubIssues } = await fetchSubIssueInfo(
       restBase,
       config.token,
       owner,
@@ -119,7 +128,7 @@ export async function fetchAndGroup(
       issue.number,
       fn,
     );
-    triageIssues.push({ ...issue, openSubIssues });
+    triageIssues.push({ ...issue, openSubIssues, hasSubIssues });
   }
 
   const map = new Map<string, TriageIssue[]>();

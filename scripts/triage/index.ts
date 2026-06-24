@@ -43,12 +43,21 @@ async function main(): Promise<void> {
 
   for (const [repo, rawIssues] of repoGroups) {
     const clarificationLabel = config.tracker.needsClarificationLabel;
+    const nonParentIssues = rawIssues.filter((i) => {
+      if (i.hasSubIssues) {
+        logger.info("skipping parent issue (has sub-issues)", {
+          issue: i.number,
+        });
+        return false;
+      }
+      return true;
+    });
     const issues =
       clarificationLabel !== null
-        ? rawIssues.filter(
+        ? nonParentIssues.filter(
             (i) => !i.labels.includes(clarificationLabel.toLowerCase()),
           )
-        : rawIssues;
+        : nonParentIssues;
 
     const repoLogger = logger.child({ repo, issue_count: issues.length });
     repoLogger.info("evaluating repo");
