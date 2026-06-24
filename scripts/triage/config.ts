@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { parse as parseYaml } from "yaml";
 import { resolveEnvValue } from "../../src/config/schema.js";
+import { isRecord } from "../../src/util.js";
 
 export interface TrackerTriageConfig {
   token: string | null;
@@ -27,10 +28,6 @@ export interface TriageConfig {
 
 type Env = Record<string, string | undefined>;
 
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
-}
-
 function str(v: unknown): string | null {
   return typeof v === "string" && v.length > 0 ? v : null;
 }
@@ -45,6 +42,9 @@ function section(
   key: string,
 ): Record<string, unknown> {
   const v = raw[key];
+  if (v !== undefined && !isRecord(v)) {
+    throw new Error(`"${key}" must be a map in TRIAGE.md, got: ${typeof v}`);
+  }
   return isRecord(v) ? v : {};
 }
 
@@ -66,7 +66,7 @@ function parseFrontMatter(text: string): {
   }
 
   if (end === -1) {
-    throw new Error("unterminated YAML front matter in TRIAGE.md");
+    throw new Error("unterminated YAML front matter");
   }
 
   const frontMatter = lines.slice(1, end).join("\n");
@@ -191,8 +191,8 @@ export async function loadTriageConfig(
   let text: string;
   try {
     text = await readFile(filePath, "utf8");
-  } catch {
-    throw new Error(`cannot read triage file: ${filePath}`);
+  } catch (e) {
+    throw new Error(`cannot read triage file: ${filePath}`, { cause: e });
   }
 
   const { raw, promptTemplate } = parseFrontMatter(text);
