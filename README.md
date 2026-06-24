@@ -91,6 +91,19 @@ The state the agent moves issues to when done is **not** a config key — specif
 
 > When done, move the issue's Status to "In Review" on the project board.
 
+**2b. (Copilot reviewer workflow only) Add custom fields**
+
+If you use the two-workflow handoff pattern (`examples/WORKFLOW.md` implementer +
+`examples/WORKFLOW.copilot.md` reviewer), add these Project custom fields:
+
+- `Handoff Count` (number)
+- `Last Reviewed SHA` (text)
+
+`examples/WORKFLOW.copilot.md` uses these fields to track reviewer-only handoffs and avoid duplicate
+increments when the PR head SHA has not changed. The reviewer workflow resolves field node IDs by
+name at runtime, so do not hardcode field IDs in `WORKFLOW` files. If either field is missing or
+unreadable, the reviewer workflow escalates to human attention by moving the item to `In Review`.
+
 **3. Create a label**
 
 Go to the target repository → **Issues** → **Labels** → **New label**. Create a label named
