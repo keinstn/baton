@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
-import { resolveEnvValue } from "../../src/config/schema.js";
+import path from "node:path";
+import { expandPath, resolveEnvValue } from "../../src/config/schema.js";
 import { isRecord, parseFrontMatter } from "../../src/util.js";
 
 export interface ReviewTrackerConfig {
@@ -73,6 +74,7 @@ function section(
 export function parseReviewConfig(
   raw: Record<string, unknown>,
   env: Env = process.env,
+  baseDir = process.cwd(),
 ): ReviewConfig {
   const t = section(raw, "tracker");
 
@@ -144,7 +146,7 @@ export function parseReviewConfig(
   };
 
   const w = section(raw, "workspace");
-  const rootRaw = resolveStr(w.root, env);
+  const rootRaw = str(w.root);
   if (!rootRaw) {
     throw new Error("workspace.root is required in REVIEW.md");
   }
@@ -162,7 +164,10 @@ export function parseReviewConfig(
     }
     hookTimeoutMs = hookTimeoutMsRaw;
   }
-  const workspace: WorkspaceConfig = { root: rootRaw, hookTimeoutMs };
+  const workspace: WorkspaceConfig = {
+    root: expandPath(rootRaw, baseDir, env),
+    hookTimeoutMs,
+  };
 
   const h = section(raw, "hooks");
   const hooks: HooksConfig = {
@@ -250,7 +255,7 @@ export async function loadReviewConfig(
   }
 
   const { raw, body: promptTemplate } = parseFrontMatter(text);
-  const config = parseReviewConfig(raw, env);
+  const config = parseReviewConfig(raw, env, path.dirname(filePath));
 
   return { config, promptTemplate };
 }
