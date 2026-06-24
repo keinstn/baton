@@ -1,18 +1,11 @@
 #!/usr/bin/env node
-import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { Logger } from "../../src/observability/logger.js";
 import { ensureGitBashOnWindowsPath } from "../../src/platform/git-bash.js";
 import { addLabel, postComment } from "./actions.js";
 import { loadTriageConfig } from "./config.js";
 import { createEvaluator } from "./evaluator.js";
 import { fetchAndGroup } from "./fetcher.js";
-
-const DEFAULT_PROMPT_PATH = path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "prompt.md",
-);
 
 ensureGitBashOnWindowsPath();
 
@@ -22,13 +15,7 @@ async function main(): Promise<void> {
   const configPath = process.argv[2] ?? path.join(process.cwd(), "TRIAGE.md");
 
   logger.info("loading triage config", { path: configPath });
-  const { config, promptTemplate: rawPromptTemplate } =
-    await loadTriageConfig(configPath);
-
-  const promptTemplate =
-    rawPromptTemplate.length > 0
-      ? rawPromptTemplate
-      : await readFile(DEFAULT_PROMPT_PATH, "utf8");
+  const { config, promptTemplate } = await loadTriageConfig(configPath);
 
   const token = config.tracker.token;
   if (!token) {
