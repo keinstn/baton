@@ -53,9 +53,12 @@ export function createCopilotEvaluator(config: EvaluatorConfig): Evaluator {
 
       const sessionId = randomUUID();
 
-      let command = `${config.command} -p ${shellQuote(prompt)} --output-format json --no-ask-user --session-id ${sessionId}`;
+      let command = `${config.command} -p ${shellQuote(prompt)} --output-format json --no-ask-user --log-level none --session-id ${sessionId}`;
       if (config.model) {
         command += ` --model ${shellQuote(config.model)}`;
+      }
+      for (const tool of config.denyTools ?? ["*"]) {
+        command += ` --deny-tool=${shellQuote(tool)}`;
       }
 
       const stdout = await runOnce(command, undefined, config.timeoutMs);

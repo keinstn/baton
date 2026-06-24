@@ -20,6 +20,8 @@ export interface EvaluatorConfig {
   command: string;
   model: string | null;
   timeoutMs: number;
+  permissionMode?: string;
+  denyTools?: string[];
 }
 
 export interface TriageConfig {
@@ -181,11 +183,23 @@ export function parseTriageConfig(
     timeoutMs = timeoutMsRaw;
   }
 
+  const permissionModeRaw = resolveStr(e.permission_mode, env);
+  const permissionMode = permissionModeRaw ?? "bypassPermissions";
+
+  const denyToolsRaw = e.deny_tools;
+  const denyTools: string[] | undefined =
+    Array.isArray(denyToolsRaw) &&
+    denyToolsRaw.every((x) => typeof x === "string")
+      ? (denyToolsRaw as string[])
+      : undefined;
+
   const evaluator: EvaluatorConfig = {
     kind,
     command: resolveStr(e.command, env) ?? defaultCommand,
     model: resolveStr(e.model, env),
     timeoutMs,
+    permissionMode,
+    denyTools,
   };
 
   return { tracker, evaluator };

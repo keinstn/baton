@@ -38,7 +38,9 @@ export function createClaudeEvaluator(config: EvaluatorConfig): Evaluator {
     ): Promise<IssueDecision[]> {
       const prompt = await renderPrompt(promptTemplate, issues, repository);
 
-      let command = `${config.command} -p --output-format stream-json --permission-mode bypassPermissions`;
+      const permissionMode = config.permissionMode ?? "bypassPermissions";
+      const denyTools = config.denyTools ?? ["*"];
+      let command = `${config.command} -p --output-format stream-json --permission-mode ${shellQuote(permissionMode)} --disallowedTools ${shellQuote(denyTools.join(","))}`;
       if (config.model) {
         command += ` --model ${shellQuote(config.model)}`;
       }

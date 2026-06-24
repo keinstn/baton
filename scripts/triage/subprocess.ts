@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { makeTreeKiller } from "../../src/platform/tree-killer.js";
 
 /**
  * Spawn `bash -lc <command>`, write optional stdin, collect all stdout,
@@ -24,20 +25,11 @@ export function runOnce(
     });
 
     let resolved = false;
+    const treeKiller = makeTreeKiller();
 
     const timer = setTimeout(() => {
       resolved = true;
-      if (proc.pid !== undefined) {
-        try {
-          process.kill(-proc.pid, "SIGKILL");
-        } catch {
-          // process.kill(-pid) fails on Windows (negative PIDs unsupported) —
-          // best-effort direct kill so the child is not left running after timeout
-          proc.kill("SIGKILL");
-        }
-      } else {
-        proc.kill("SIGKILL");
-      }
+      void treeKiller.kill(proc);
       reject(new Error(`triage subprocess timed out after ${timeoutMs}ms`));
     }, timeoutMs);
 
