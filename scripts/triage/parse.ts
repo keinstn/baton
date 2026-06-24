@@ -8,9 +8,69 @@ export function stripCodeFence(text: string): string {
     .trim();
 }
 
+// LLMs sometimes emit conversational preamble/postamble around the JSON array.
+// Scan for the first balanced outermost [...] that parses as an array of objects,
+// respecting quoted strings so brackets inside string values do not affect depth
+// counting and so scalar arrays like [1,2] in prose are not mistaken for the
+// decisions array.
+function extractJsonArray(text: string): string {
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] === "[") {
+      let depth = 0;
+      let j = i;
+      let inStr = false;
+      let esc = false;
+      while (j < text.length) {
+        const ch = text[j];
+        if (esc) {
+          esc = false;
+        } else if (inStr) {
+          if (ch === "\\") esc = true;
+          else if (ch === '"') inStr = false;
+        } else {
+          if (ch === '"') inStr = true;
+          else if (ch === "[") depth++;
+          else if (ch === "]") {
+            depth--;
+            if (depth === 0) {
+              const candidate = text.slice(i, j + 1);
+              try {
+                const arr: unknown = JSON.parse(candidate);
+                if (
+                  Array.isArray(arr) &&
+                  arr.every(
+                    (el: unknown) => typeof el === "object" && el !== null,
+                  )
+                ) {
+                  return candidate;
+                }
+              } catch {
+                // not valid JSON, try next candidate
+              }
+              break;
+            }
+          }
+        }
+        j++;
+      }
+      i = j + 1;
+    } else {
+      i++;
+    }
+  }
+  return text;
+}
+
 export function parseDecisions(text: string): IssueDecision[] {
   const clean = stripCodeFence(text);
-  const parsed: unknown = JSON.parse(clean);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(clean);
+  } catch {
+    // LLMs sometimes emit conversational preamble/postamble around the JSON array
+    parsed = JSON.parse(extractJsonArray(clean));
+  }
   if (!Array.isArray(parsed)) {
     throw new Error("eval: expected JSON array of IssueDecision");
   }
