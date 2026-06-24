@@ -127,7 +127,7 @@ Rules:
     2. List the project's fields and filter by name:
        ```
        FIELDS=$(gh api graphql \
-         -f query='query($id:ID!){node(id:$id){...on ProjectV2{fields(first:20){nodes{...on ProjectV2FieldCommon{id name}}}}}}' \
+         -f query='query($id:ID!){node(id:$id){...on ProjectV2{fields(first:50){nodes{...on ProjectV2FieldCommon{id name}}}}}}' \
          -f id="$PROJECT_ID")
        HANDOFF_COUNT_FIELD_ID=$(echo "$FIELDS" | jq -r '.data.node.fields.nodes[]|select(.name=="Handoff Count")|.id')
        LAST_SHA_FIELD_ID=$(echo "$FIELDS" | jq -r '.data.node.fields.nodes[]|select(.name=="Last Reviewed SHA")|.id')
@@ -162,6 +162,14 @@ Rules:
     `In Progress`, compare `PR_HEAD_SHA` with `CURRENT_SHA`:
     - if they are equal, the agent is re-reviewing the same commit — do not increment the count.
     - if they differ, increment the effective count by 1.
+    Assign `$NEW_COUNT` explicitly before writing to the project fields:
+    ```
+    if [ "$PR_HEAD_SHA" = "$CURRENT_SHA" ]; then
+      NEW_COUNT=$CURRENT_COUNT          # same commit — no increment
+    else
+      NEW_COUNT=$((CURRENT_COUNT + 1))  # new commit — increment
+    fi
+    ```
     Always write both the new count and `PR_HEAD_SHA` back to the project fields when sending
     back or when approving:
     ```
@@ -195,11 +203,11 @@ Rules:
     non-blocking advice.
   - update the issue progress comment with `Role: Baton Reviewer` plus a concise summary of what
     the implementation workflow should address next
-  - if `handoff_count` is still below `3`, move the issue status back to "In Progress" so the
+  - if `$NEW_COUNT` is still below `3`, move the issue status back to "In Progress" so the
     implementation workflow can resume
-  - if this finding set would make `handoff_count` exceed `3`, do not send the issue back again;
-    instead, keep `status=needs_changes`, say `Human attention required: agent review loop limit
-    reached.`, and move the issue to "In Review"
+  - if `$NEW_COUNT` would reach or exceed `3`, do not send the issue back again; instead, keep
+    `status=needs_changes`, say `Human attention required: agent review loop limit reached.`, and
+    move the issue to "In Review"
 - If you do not find actionable issues:
   - create or update exactly one reviewer summary comment using the same search-then-edit-or-create
     pattern: `<!-- baton-reviewer-summary status=pass -->` and a visible
