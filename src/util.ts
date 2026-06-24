@@ -1,3 +1,5 @@
+import { parse as parseYaml } from "yaml";
+
 /** Normalized state/label comparison per SPEC §4.2: trim + lowercase. */
 export function norm(s: string): string {
   return s.trim().toLowerCase();
@@ -46,4 +48,55 @@ export function now(): string {
 /** Type guard for a non-null plain object, e.g. a parsed JSON/GraphQL payload. */
 export function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/**
+ * Parse Markdown text with YAML front matter into `{ raw, body }`.
+ *
+ * - Text starting with `---` → lines until the next `---` are YAML front matter.
+ * - Front matter must decode to a map; non-map YAML is an error.
+ * - No leading `---` → `raw` is `{}`, `body` is the trimmed full text.
+ * - `body` is trimmed.
+ *
+ * Throws plain `Error`; callers that need structured error codes should catch
+ * and re-throw (e.g. `BatonError`).
+ */
+export function parseFrontMatter(text: string): {
+  raw: Record<string, unknown>;
+  body: string;
+} {
+  const lines = text.split(/\r?\n/);
+  if ((lines[0] ?? "").trim() !== "---") {
+    return { raw: {}, body: text.trim() };
+  }
+  let end = -1;
+  for (let i = 1; i < lines.length; i++) {
+    if ((lines[i] ?? "").trim() === "---") {
+      end = i;
+      break;
+    }
+  }
+  if (end === -1) {
+    throw new Error("unterminated YAML front matter");
+  }
+  const frontMatter = lines.slice(1, end).join("\n");
+  let parsed: unknown;
+  try {
+    parsed = parseYaml(frontMatter);
+  } catch (err) {
+    throw new Error(`invalid YAML front matter: ${String(err)}`);
+  }
+  if (parsed === null || parsed === undefined) {
+    parsed = {};
+  }
+  if (!isRecord(parsed)) {
+    throw new Error("YAML front matter must decode to a map");
+  }
+  return {
+    raw: parsed,
+    body: lines
+      .slice(end + 1)
+      .join("\n")
+      .trim(),
+  };
 }

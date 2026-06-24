@@ -32,6 +32,13 @@ tracker:
   # Label to apply to issues the evaluator marks as "ready".
   ai_ready_label: ai-ready
 
+  # Optional: label to apply when the evaluator marks an issue as "needs_clarification".
+  # When set, the label is applied after posting the clarification comment, and issues
+  # already carrying this label are skipped on subsequent triage runs. Remove the label
+  # once the question has been answered to re-enter the issue in the triage pool.
+  # When omitted, no label is applied and issues will be re-evaluated every run.
+  # needs_clarification_label: needs-clarification
+
   # Optional: restrict triage to specific repos.
   # When omitted, all repositories in the project board are included.
   # repos:

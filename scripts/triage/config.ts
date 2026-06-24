@@ -1,7 +1,6 @@
 import { readFile } from "node:fs/promises";
-import { parse as parseYaml } from "yaml";
 import { resolveEnvValue } from "../../src/config/schema.js";
-import { isRecord } from "../../src/util.js";
+import { isRecord, parseFrontMatter } from "../../src/util.js";
 
 export interface TrackerTriageConfig {
   token: string | null;
@@ -12,6 +11,7 @@ export interface TrackerTriageConfig {
   statusField: string;
   todoState: string;
   aiReadyLabel: string;
+  needsClarificationLabel: string | null;
   repos: string[] | null;
 }
 
@@ -49,51 +49,6 @@ function section(
     throw new Error(`"${key}" must be a map in TRIAGE.md, got: ${typeof v}`);
   }
   return isRecord(v) ? v : {};
-}
-
-function parseFrontMatter(text: string): {
-  raw: Record<string, unknown>;
-  promptTemplate: string;
-} {
-  const lines = text.split(/\r?\n/);
-  if ((lines[0] ?? "").trim() !== "---") {
-    return { raw: {}, promptTemplate: text.trim() };
-  }
-
-  let end = -1;
-  for (let i = 1; i < lines.length; i++) {
-    if ((lines[i] ?? "").trim() === "---") {
-      end = i;
-      break;
-    }
-  }
-
-  if (end === -1) {
-    throw new Error("unterminated YAML front matter");
-  }
-
-  const frontMatter = lines.slice(1, end).join("\n");
-  let parsed: unknown;
-  try {
-    parsed = parseYaml(frontMatter);
-  } catch (err) {
-    throw new Error(`invalid YAML front matter: ${String(err)}`);
-  }
-
-  if (parsed === null || parsed === undefined) {
-    parsed = {};
-  }
-  if (!isRecord(parsed)) {
-    throw new Error("YAML front matter must decode to a map");
-  }
-
-  return {
-    raw: parsed,
-    promptTemplate: lines
-      .slice(end + 1)
-      .join("\n")
-      .trim(),
-  };
 }
 
 export function parseTriageConfig(
@@ -155,6 +110,7 @@ export function parseTriageConfig(
     statusField: resolveStr(t.status_field, env) ?? "Status",
     todoState: resolveStr(t.todo_state, env) ?? "Todo",
     aiReadyLabel: resolveStr(t.ai_ready_label, env) ?? "ai-ready",
+    needsClarificationLabel: resolveStr(t.needs_clarification_label, env),
     repos,
   };
 
@@ -216,7 +172,7 @@ export async function loadTriageConfig(
     throw new Error(`cannot read triage file: ${filePath}`, { cause: e });
   }
 
-  const { raw, promptTemplate } = parseFrontMatter(text);
+  const { raw, body: promptTemplate } = parseFrontMatter(text);
   const config = parseTriageConfig(raw, env);
 
   return { config, promptTemplate };
