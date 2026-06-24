@@ -1,4 +1,15 @@
 ---
+# baton triage config
+#
+# Usage: node --experimental-strip-types scripts/triage/index.ts [path/to/TRIAGE.md]
+#
+# Cron example (run every 30 minutes):
+#   */30 * * * * cd /path/to/repo && node --experimental-strip-types scripts/triage/index.ts >> /var/log/triage.log 2>&1
+#
+# The YAML body after the closing --- is an optional LiquidJS prompt template.
+# Leave it empty (or omit it entirely) to use the built-in default (scripts/triage/prompt.md).
+# Available template variables: `repository` (owner/name string) and `issues` (array of Issue objects).
+
 # Required: GitHub authentication token.
 # Use $GITHUB_TOKEN (recommended) or a literal PAT with repo + project scopes.
 tracker:
@@ -41,11 +52,4 @@ evaluator:
   # timeout_ms: 60000        # evaluation timeout in milliseconds (default: 60000)
   # permission_mode: bypassPermissions
   # deny_tools: ["Bash", "Edit"]
-
-# The body below this closing --- is a LiquidJS prompt template.
-# Available variables: `repository` (owner/name) and `issues` (array of Issue objects).
-# Leave it empty to use the built-in default from scripts/triage/prompt.md.
-#
-# Cron example (run every 30 minutes):
-#   */30 * * * * cd /path/to/repo && node --experimental-strip-types scripts/triage/index.ts >> /var/log/triage.log 2>&1
 ---
