@@ -1,8 +1,8 @@
 import { Liquid } from "liquidjs";
-import type { Issue } from "../../src/tracker/types.js";
 import { createClaudeEvaluator } from "./claude-eval.js";
 import type { EvaluatorConfig } from "./config.js";
 import { createCopilotEvaluator } from "./copilot-eval.js";
+import type { TriageIssue } from "./fetcher.js";
 
 export interface IssueDecision {
   number: number;
@@ -13,7 +13,7 @@ export interface IssueDecision {
 
 export interface Evaluator {
   evaluate(
-    issues: Issue[],
+    issues: TriageIssue[],
     promptTemplate: string,
     repository: string,
   ): Promise<IssueDecision[]>;
@@ -23,7 +23,7 @@ const liquid = new Liquid({ strictVariables: true }); // throws on undefined var
 
 export async function renderPrompt(
   template: string,
-  issues: Issue[],
+  issues: TriageIssue[],
   repository: string,
 ): Promise<string> {
   return liquid.parseAndRender(template, { issues, repository });
