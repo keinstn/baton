@@ -112,29 +112,20 @@ Rules:
     this single push carries both any merge commit and your feedback changes) and move the issue
     status to the chosen review state.
 - Actionable feedback means:
-  - PR conversation comments on `issues/$PR_NUMBER/comments` — including comments containing
-    `<!-- baton-reviewer-finding -->` or `<!-- baton-reviewer-summary -->`, which are Reviewer
-    findings that MUST be addressed with code changes and a `baton-agent-reply` response — that
-    do not themselves start with `<!-- baton-agent-reply` or `<!-- baton-impl-progress` (those are the
-    Implementer's own comment types and should be skipped) and do not already have a later agent
-    follow-up comment containing `<!-- baton-agent-reply source_comment_id=<comment_id> -->` for
-    that comment's ID
-  - inline review threads, fetched via `gh api graphql` — use `{{ issue.repository }}`
+  - PR conversation comments on `issues/$PR_NUMBER/comments` that do not start with
+    `<!-- baton-agent-reply` (Implementer's own replies), `<!-- baton-reviewer-summary`
+    (Reviewer state-management comments), or `<!-- baton-impl-progress` (Implementer's own
+    progress comments), and do not already have a later agent follow-up comment containing
+    `<!-- baton-agent-reply source_comment_id=<comment_id> -->` for that comment's ID
+  - unresolved inline review threads, fetched via `gh api graphql` — use `{{ issue.repository }}`
     as the owner/repo value (split into owner/repo inline as needed, e.g.
     `GH_OWNER=$(echo "{{ issue.repository }}" | cut -d/ -f1)`,
     `GH_REPO=$(echo "{{ issue.repository }}" | cut -d/ -f2)`) and
     request fields for `reviewThreads` (including `isResolved`) and `comments(first:10)` including
     pagination metadata (`pageInfo { hasNextPage endCursor }`), then paginate review threads and
-    thread comments further as needed. A thread is actionable if:
-    - it is a **bot thread** (first comment body contains `<!-- baton-reviewer-finding`) and
-      `isResolved` is `false` and no `baton-agent-reply` reply already exists in the thread
-      (normal case), or
-    - it is a **bot thread** (first comment body contains `<!-- baton-reviewer-finding`) and
-      `isResolved` is `false` and a `baton-agent-reply` reply already exists in the thread
-      (partial-failure recovery: a prior run posted the reply but `resolveReviewThread` failed), or
-    - it is a **human thread** (first comment body does not contain `<!-- baton-reviewer-finding`)
-      and the latest reviewer comment does not already have a later `<!-- baton-agent-reply -->`
-      reply in the same thread
+    thread comments further as needed; a thread is actionable if `isResolved` is `false` and
+    the latest reviewer comment does not already have a later `<!-- baton-agent-reply -->` reply
+    in the same thread
   - the latest still-actionable top-level review summary per reviewer from
     `pulls/$PR_NUMBER/reviews`
   - paginate all list results; for top-level reviews, later `APPROVED` or `DISMISSED` reviews
