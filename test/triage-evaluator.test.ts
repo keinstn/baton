@@ -128,7 +128,7 @@ describe("claude-eval adapter", () => {
     await ev.evaluate([makeIssue()], TEMPLATE, "acme/repo");
 
     const [command] = mockRunOnce.mock.calls.at(0) ?? [];
-    expect(command).toContain("--model claude-opus-4-8");
+    expect(command).toContain("--model 'claude-opus-4-8'");
   });
 
   it("does not include --model flag when model is null", async () => {
@@ -290,6 +290,43 @@ describe("copilot-eval adapter", () => {
 
     const [, stdin] = mockRunOnce.mock.calls.at(0) ?? [];
     expect(stdin).toBeUndefined();
+  });
+
+  it("includes --model flag when model is configured", async () => {
+    const stdout = JSON.stringify({
+      type: "assistant.message",
+      data: { content: JSON.stringify(BASE_DECISIONS) },
+    });
+    mockRunOnce.mockResolvedValue(stdout);
+
+    const config: EvaluatorConfig = { ...COPILOT_CONFIG, model: "gpt-4o" };
+    const ev = createEvaluator(config);
+    await ev.evaluate([makeIssue()], TEMPLATE, "acme/repo");
+
+    const [command] = mockRunOnce.mock.calls.at(0) ?? [];
+    expect(command).toContain("--model 'gpt-4o'");
+  });
+
+  it("does not include --model flag when model is null", async () => {
+    const stdout = JSON.stringify({
+      type: "assistant.message",
+      data: { content: JSON.stringify(BASE_DECISIONS) },
+    });
+    mockRunOnce.mockResolvedValue(stdout);
+
+    const ev = createEvaluator(COPILOT_CONFIG);
+    await ev.evaluate([makeIssue()], TEMPLATE, "acme/repo");
+
+    const [command] = mockRunOnce.mock.calls.at(0) ?? [];
+    expect(command).not.toContain("--model");
+  });
+
+  it("throws when prompt exceeds 128 KiB", async () => {
+    const ev = createEvaluator(COPILOT_CONFIG);
+    const bigIssue = makeIssue({ description: "x".repeat(130 * 1024) });
+    await expect(
+      ev.evaluate([bigIssue], TEMPLATE, "acme/repo"),
+    ).rejects.toThrow("prompt too large for argv");
   });
 
   it("throws when no assistant.message lines are present", async () => {

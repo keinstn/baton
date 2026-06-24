@@ -13,16 +13,27 @@ export function runOnce(
   return new Promise((resolve, reject) => {
     const useStdin = stdin !== undefined;
     const proc = spawn("bash", ["-lc", command], {
-      stdio: [useStdin ? "pipe" : "ignore", "pipe", "ignore"],
+      stdio: [useStdin ? "pipe" : "ignore", "pipe", "pipe"],
       detached: true,
       windowsHide: true,
     });
 
+    let stderrTail = "";
+    proc.stderr.on("data", (chunk: Buffer) => {
+      stderrTail = (stderrTail + chunk.toString("utf8")).slice(-2000);
+    });
+
+    let resolved = false;
+
     const timer = setTimeout(() => {
-      try {
-        if (proc.pid !== undefined) process.kill(-proc.pid, "SIGKILL");
-        else proc.kill("SIGKILL");
-      } catch {
+      resolved = true;
+      if (proc.pid !== undefined) {
+        try {
+          process.kill(-proc.pid, "SIGKILL");
+        } catch {
+          // process group already gone — no further kill needed
+        }
+      } else {
         proc.kill("SIGKILL");
       }
       reject(new Error(`triage subprocess timed out after ${timeoutMs}ms`));
@@ -37,7 +48,6 @@ export function runOnce(
     const chunks: Buffer[] = [];
     proc.stdout.on("data", (chunk: Buffer) => chunks.push(chunk));
 
-    let resolved = false;
     proc.on("error", (err) => {
       if (resolved) return;
       resolved = true;
@@ -53,9 +63,12 @@ export function runOnce(
       if (code === 0) {
         resolve(output);
       } else {
+        const stderrInfo = stderrTail
+          ? `\nstderr: ${stderrTail.slice(0, 500)}`
+          : "";
         reject(
           new Error(
-            `triage subprocess exited with code ${String(code)}: ${output.slice(0, 500)}`,
+            `triage subprocess exited with code ${String(code)}: ${output.slice(0, 500)}${stderrInfo}`,
           ),
         );
       }

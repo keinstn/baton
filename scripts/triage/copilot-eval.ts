@@ -4,15 +4,8 @@ import { isRecord, shellQuote } from "../../src/util.js";
 import type { EvaluatorConfig } from "./config.js";
 import type { Evaluator, IssueDecision } from "./evaluator.js";
 import { renderPrompt } from "./evaluator.js";
+import { parseDecisions } from "./parse.js";
 import { runOnce } from "./subprocess.js";
-
-function stripCodeFence(text: string): string {
-  return text
-    .replace(/^```json\s*/m, "")
-    .replace(/^```\s*/m, "")
-    .replace(/```\s*$/m, "")
-    .trim();
-}
 
 function extractContent(stdout: string): string {
   const parts: string[] = [];
@@ -42,15 +35,6 @@ function extractContent(stdout: string): string {
   return parts.join("");
 }
 
-function parseDecisions(text: string): IssueDecision[] {
-  const clean = stripCodeFence(text);
-  const parsed: unknown = JSON.parse(clean);
-  if (!Array.isArray(parsed)) {
-    throw new Error("copilot eval: expected JSON array of IssueDecision");
-  }
-  return parsed as IssueDecision[];
-}
-
 export function createCopilotEvaluator(config: EvaluatorConfig): Evaluator {
   return {
     async evaluate(
@@ -59,9 +43,20 @@ export function createCopilotEvaluator(config: EvaluatorConfig): Evaluator {
       repository: string,
     ): Promise<IssueDecision[]> {
       const prompt = await renderPrompt(promptTemplate, issues, repository);
+
+      const promptBytes = Buffer.byteLength(prompt, "utf8");
+      if (promptBytes > 128 * 1024) {
+        throw new Error(
+          `copilot eval: prompt too large for argv (${promptBytes} bytes > 131072); reduce issue batch size`,
+        );
+      }
+
       const sessionId = randomUUID();
 
-      const command = `${config.command} -p ${shellQuote(prompt)} --output-format json --no-ask-user --session-id ${sessionId}`;
+      let command = `${config.command} -p ${shellQuote(prompt)} --output-format json --no-ask-user --session-id ${sessionId}`;
+      if (config.model) {
+        command += ` --model ${shellQuote(config.model)}`;
+      }
 
       const stdout = await runOnce(command, undefined, config.timeoutMs);
       const content = extractContent(stdout);
