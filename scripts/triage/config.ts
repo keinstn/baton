@@ -121,7 +121,7 @@ export function parseTriageConfig(
     );
   }
 
-  const ownerTypeRaw = t.owner_type;
+  const ownerTypeRaw = resolveStr(t.owner_type, env);
   let ownerType: "organization" | "user";
   if (
     ownerTypeRaw === undefined ||
@@ -150,7 +150,7 @@ export function parseTriageConfig(
   };
 
   const e = section(raw, "evaluator");
-  const kind = str(e.kind);
+  const kind = resolveStr(e.kind, env);
   if (kind !== "claude_code" && kind !== "copilot") {
     throw new Error(
       `evaluator.kind must be "claude_code" or "copilot" in TRIAGE.md, got: ${String(kind)}`,

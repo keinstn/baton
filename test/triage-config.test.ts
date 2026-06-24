@@ -250,6 +250,21 @@ describe("tracker.owner_type validation", () => {
     expect(config.tracker.ownerType).toBe("organization");
   });
 
+  it("resolves tracker.owner_type from $VAR", () => {
+    const config = parseTriageConfig(
+      {
+        tracker: {
+          owner: "acme",
+          project_number: 1,
+          owner_type: "$OWNER_TYPE",
+        },
+        evaluator: { kind: "claude_code" },
+      },
+      { OWNER_TYPE: "user" },
+    );
+    expect(config.tracker.ownerType).toBe("user");
+  });
+
   it("accepts explicit 'organization'", () => {
     const config = parseTriageConfig(
       {
@@ -290,6 +305,32 @@ describe("tracker.owner_type validation", () => {
         {},
       ),
     ).toThrow(/tracker\.owner_type/);
+  });
+});
+
+describe("evaluator.kind env resolution", () => {
+  it("resolves evaluator.kind from $VAR", () => {
+    const config = parseTriageConfig(
+      {
+        tracker: { owner: "acme", project_number: 1 },
+        evaluator: { kind: "$EVALUATOR_KIND" },
+      },
+      { EVALUATOR_KIND: "copilot" },
+    );
+    expect(config.evaluator.kind).toBe("copilot");
+    expect(config.evaluator.command).toBe("copilot");
+  });
+
+  it("throws when evaluator.kind $VAR is unset", () => {
+    expect(() =>
+      parseTriageConfig(
+        {
+          tracker: { owner: "acme", project_number: 1 },
+          evaluator: { kind: "$EVALUATOR_KIND" },
+        },
+        {},
+      ),
+    ).toThrow(/evaluator\.kind/);
   });
 });
 
