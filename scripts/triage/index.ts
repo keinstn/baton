@@ -41,7 +41,15 @@ async function main(): Promise<void> {
   let totalEvalErrors = 0;
   let totalActionErrors = 0;
 
-  for (const [repo, issues] of repoGroups) {
+  for (const [repo, rawIssues] of repoGroups) {
+    const clarificationLabel = config.tracker.needsClarificationLabel;
+    const issues =
+      clarificationLabel !== null
+        ? rawIssues.filter(
+            (i) => !i.labels.includes(clarificationLabel.toLowerCase()),
+          )
+        : rawIssues;
+
     const repoLogger = logger.child({ repo, issue_count: issues.length });
     repoLogger.info("evaluating repo");
 
@@ -101,6 +109,15 @@ async function main(): Promise<void> {
             })();
           issueLogger.info("posting clarification comment");
           await postComment(repo, decision.number, comment, token);
+          if (config.tracker.needsClarificationLabel) {
+            issueLogger.info("adding needs-clarification label");
+            await addLabel(
+              repo,
+              decision.number,
+              config.tracker.needsClarificationLabel,
+              token,
+            );
+          }
           totalClarification++;
         } else {
           issueLogger.debug("issue not ready, skipping", {

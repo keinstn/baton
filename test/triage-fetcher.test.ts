@@ -14,6 +14,7 @@ function baseConfig(
     statusField: "Status",
     todoState: "Todo",
     aiReadyLabel: "ai-ready",
+    needsClarificationLabel: null,
     repos: null,
     ...overrides,
   };
