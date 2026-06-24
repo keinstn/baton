@@ -61,20 +61,28 @@ async function fetchSubIssueInfo(
   }
 
   let hasSubIssues = false;
+  let fetchError = false;
   const openSubIssues: SubIssueRef[] = [];
   let nextUrl: string | null =
     `${restBase}/repos/${owner}/${repo}/issues/${issueNumber}/sub_issues?per_page=100`;
 
   while (nextUrl !== null) {
     const resp = await fetchFn(nextUrl, { headers });
-    if (!resp.ok) break;
+    if (!resp.ok) {
+      fetchError = true;
+      break;
+    }
     let data: unknown;
     try {
       data = await resp.json();
     } catch {
+      fetchError = true;
       break;
     }
-    if (!Array.isArray(data)) break;
+    if (!Array.isArray(data)) {
+      fetchError = true;
+      break;
+    }
     for (const s of data) {
       if (
         s !== null &&
@@ -101,7 +109,7 @@ async function fetchSubIssueInfo(
     nextUrl = parseLinkNext(resp.headers.get("link"));
   }
 
-  return { hasSubIssues, openSubIssues };
+  return { hasSubIssues: fetchError || hasSubIssues, openSubIssues };
 }
 
 export async function fetchAndGroup(
