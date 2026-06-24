@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
 import { makeTreeKiller } from "../../src/platform/tree-killer.js";
 
+export type RunOnceOpts = { timeoutMs?: number; cwd?: string };
+
 /**
  * Spawn `bash -lc <command>`, write optional stdin, collect all stdout,
  * and kill the process on timeout. Rejects if the process exits non-zero
@@ -9,14 +11,16 @@ import { makeTreeKiller } from "../../src/platform/tree-killer.js";
 export function runOnce(
   command: string,
   stdin?: string,
-  timeoutMs = 60_000,
+  opts?: RunOnceOpts,
 ): Promise<string> {
+  const timeoutMs = opts?.timeoutMs ?? 60_000;
   return new Promise((resolve, reject) => {
     const useStdin = stdin !== undefined;
     const proc = spawn("bash", ["-lc", command], {
       stdio: [useStdin ? "pipe" : "ignore", "pipe", "pipe"],
       detached: true,
       windowsHide: true,
+      ...(opts?.cwd !== undefined ? { cwd: opts.cwd } : {}),
     });
 
     let stderrTail = "";
@@ -30,7 +34,7 @@ export function runOnce(
     const timer = setTimeout(() => {
       resolved = true;
       void treeKiller.kill(proc);
-      reject(new Error(`triage subprocess timed out after ${timeoutMs}ms`));
+      reject(new Error(`subprocess timed out after ${timeoutMs}ms`));
     }, timeoutMs);
 
     if (useStdin && proc.stdin) {
@@ -62,7 +66,7 @@ export function runOnce(
           : "";
         reject(
           new Error(
-            `triage subprocess exited with code ${String(code)}: ${output.slice(0, 500)}${stderrInfo}`,
+            `subprocess exited with code ${String(code)}: ${output.slice(0, 500)}${stderrInfo}`,
           ),
         );
       }

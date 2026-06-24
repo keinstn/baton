@@ -1,10 +1,10 @@
 import { isRecord, shellQuote } from "../../src/util.js";
+import { runOnce } from "../lib/subprocess.js";
 import type { EvaluatorConfig } from "./config.js";
 import type { Evaluator, IssueDecision } from "./evaluator.js";
 import { renderPrompt } from "./evaluator.js";
 import type { TriageIssue } from "./fetcher.js";
 import { parseDecisions } from "./parse.js";
-import { runOnce } from "./subprocess.js";
 
 function extractResult(stdout: string): string {
   for (const line of stdout.split("\n")) {
@@ -48,7 +48,9 @@ export function createClaudeEvaluator(config: EvaluatorConfig): Evaluator {
         command += ` --model ${shellQuote(config.model)}`;
       }
 
-      const stdout = await runOnce(command, prompt, config.timeoutMs);
+      const stdout = await runOnce(command, prompt, {
+        timeoutMs: config.timeoutMs,
+      });
       const resultText = extractResult(stdout);
       return parseDecisions(resultText);
     },
