@@ -37,6 +37,16 @@ describe("parseDecisions", () => {
     expect(parseDecisions(text)).toEqual(DECISIONS);
   });
 
+  it("handles preamble containing '['", () => {
+    const text = `Analyzing issues [#12, #34]:\n${JSON.stringify(DECISIONS)}`;
+    expect(parseDecisions(text)).toEqual(DECISIONS);
+  });
+
+  it("handles postamble containing ']'", () => {
+    const text = `${JSON.stringify(DECISIONS)}\nNote: sub-issues [#45] were skipped.`;
+    expect(parseDecisions(text)).toEqual(DECISIONS);
+  });
+
   it("throws when input contains no JSON array", () => {
     expect(() => parseDecisions("I'll check each issue.")).toThrow(SyntaxError);
   });
