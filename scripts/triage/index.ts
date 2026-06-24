@@ -42,6 +42,15 @@ async function main(): Promise<void> {
   let totalActionErrors = 0;
 
   for (const [repo, rawIssues] of repoGroups) {
+    const lookupFailedIssueNumbers = rawIssues
+      .filter((i) => i.subIssueLookupFailed)
+      .map((i) => i.number);
+    if (lookupFailedIssueNumbers.length > 0) {
+      throw new Error(
+        `sub-issue lookup failed for ${repo} issues: ${lookupFailedIssueNumbers.join(", ")}`,
+      );
+    }
+
     const clarificationLabel = config.tracker.needsClarificationLabel;
     const nonParentIssues = rawIssues.filter((i) => {
       if (i.hasSubIssues) {

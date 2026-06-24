@@ -12,6 +12,7 @@ export interface SubIssueRef {
 export interface TriageIssue extends Issue {
   openSubIssues: SubIssueRef[];
   hasSubIssues: boolean;
+  subIssueLookupFailed: boolean;
 }
 
 function parseLinkNext(link: string | null): string | null {
@@ -52,7 +53,11 @@ async function fetchSubIssueInfo(
   repo: string,
   issueNumber: number,
   fetchFn: typeof fetch,
-): Promise<{ hasSubIssues: boolean; openSubIssues: SubIssueRef[] }> {
+): Promise<{
+  hasSubIssues: boolean;
+  openSubIssues: SubIssueRef[];
+  subIssueLookupFailed: boolean;
+}> {
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
   };
@@ -109,7 +114,11 @@ async function fetchSubIssueInfo(
     nextUrl = parseLinkNext(resp.headers.get("link"));
   }
 
-  return { hasSubIssues: fetchError || hasSubIssues, openSubIssues };
+  return {
+    hasSubIssues,
+    openSubIssues,
+    subIssueLookupFailed: fetchError,
+  };
 }
 
 export async function fetchAndGroup(
@@ -128,15 +137,21 @@ export async function fetchAndGroup(
     const parts = issue.repository.split("/");
     const owner = parts[0] ?? "";
     const repo = parts[1] ?? "";
-    const { hasSubIssues, openSubIssues } = await fetchSubIssueInfo(
-      restBase,
-      config.token,
-      owner,
-      repo,
-      issue.number,
-      fn,
-    );
-    triageIssues.push({ ...issue, openSubIssues, hasSubIssues });
+    const { hasSubIssues, openSubIssues, subIssueLookupFailed } =
+      await fetchSubIssueInfo(
+        restBase,
+        config.token,
+        owner,
+        repo,
+        issue.number,
+        fn,
+      );
+    triageIssues.push({
+      ...issue,
+      openSubIssues,
+      hasSubIssues,
+      subIssueLookupFailed,
+    });
   }
 
   const map = new Map<string, TriageIssue[]>();

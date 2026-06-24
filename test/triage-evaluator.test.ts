@@ -31,6 +31,7 @@ function makeIssue(overrides: Partial<TriageIssue> = {}): TriageIssue {
     updatedAt: null,
     openSubIssues: [],
     hasSubIssues: false,
+    subIssueLookupFailed: false,
     ...overrides,
   };
 }
