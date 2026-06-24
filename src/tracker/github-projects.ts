@@ -3,9 +3,23 @@ import { BatonError } from "../errors.js";
 import type { Logger } from "../observability/logger.js";
 import { isRecord, norm } from "../util.js";
 import { ITEMS_QUERY, NODES_QUERY, projectQuery } from "./queries.js";
-import type { Issue, TrackerClient } from "./types.js";
+import type { BlockerRef, Issue, TrackerClient } from "./types.js";
 
 const NETWORK_TIMEOUT_MS = 30000;
+
+function parseLinkNext(link: string | null): string | null {
+  if (!link) return null;
+  const match = link.match(/<([^>]+)>;\s*rel="next"/);
+  return match?.[1] ?? null;
+}
+
+// GHES uses /api/v3 for REST; github.com has no /v3 segment.
+// Replace /api/graphql → /api/v3 first, then strip a bare /graphql suffix.
+function restBaseFromEndpoint(endpoint: string): string {
+  return endpoint
+    .replace(/\/api\/graphql$/, "/api/v3")
+    .replace(/\/graphql$/, "");
+}
 
 /**
  * Walk the error cause chain looking for an HTTP/2 GOAWAY message.
@@ -93,6 +107,68 @@ export class GitHubProjectsClient implements TrackerClient {
     private readonly fetchFn: FetchFn = fetch,
     private readonly logger?: Logger,
   ) {}
+
+  private async fetchBlockedBy(
+    restBase: string,
+    owner: string,
+    repo: string,
+    issueNumber: number,
+  ): Promise<BlockerRef[]> {
+    if (!this.cfg.token) return [];
+    const headers: Record<string, string> = {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${this.cfg.token}`,
+      "X-GitHub-Api-Version": "2026-03-10",
+    };
+    const result: BlockerRef[] = [];
+    try {
+      let nextUrl: string | null =
+        `${restBase}/repos/${owner}/${repo}/issues/${issueNumber}/dependencies/blocked_by?per_page=100`;
+      while (nextUrl !== null) {
+        const resp = await this.fetchFn(nextUrl, { headers });
+        if (!resp.ok) break;
+        let data: unknown;
+        try {
+          data = await resp.json();
+        } catch {
+          break;
+        }
+        if (!Array.isArray(data)) break;
+        for (const dep of data) {
+          if (dep === null || typeof dep !== "object") continue;
+          const nodeId =
+            "node_id" in dep && typeof dep.node_id === "string"
+              ? dep.node_id
+              : null;
+          const num =
+            "number" in dep && typeof dep.number === "number"
+              ? dep.number
+              : null;
+          const state =
+            "state" in dep && typeof dep.state === "string" ? dep.state : null;
+          const repositoryUrl =
+            "repository_url" in dep && typeof dep.repository_url === "string"
+              ? dep.repository_url
+              : null;
+          const repoName = repositoryUrl
+            ? (repositoryUrl.split("/").pop() ?? null)
+            : null;
+          const identifier =
+            repoName !== null && num !== null ? `${repoName}-${num}` : null;
+          result.push({
+            id: nodeId,
+            identifier,
+            state,
+            terminal: state === "closed",
+          });
+        }
+        nextUrl = parseLinkNext(resp.headers.get("link"));
+      }
+    } catch {
+      return result;
+    }
+    return result;
+  }
 
   /** Drop the cached project/field resolution (SPEC §11.2: refresh on reload/validation failure). */
   invalidateProjectCache(): void {
@@ -300,8 +376,6 @@ export class GitHubProjectsClient implements TrackerClient {
       labels: (content.labels?.nodes ?? [])
         .map((l) => (l?.name ?? "").trim().toLowerCase())
         .filter((l) => l !== ""),
-      // Phase 1: issue-dependency integration lands later; SPEC §4.1.1 mandates
-      // degrading to [] when the data is unavailable.
       blockedBy: [],
       createdAt: content.createdAt ?? null,
       updatedAt: content.updatedAt ?? null,
@@ -364,6 +438,19 @@ export class GitHubProjectsClient implements TrackerClient {
         );
       }
       after = items.pageInfo.endCursor;
+    }
+    // Sequential to avoid hitting GitHub secondary rate limits.
+    const restBase = restBaseFromEndpoint(this.cfg.endpoint);
+    for (const issue of out) {
+      const parts = issue.repository.split("/");
+      const owner = parts[0] ?? "";
+      const repo = parts[1] ?? "";
+      issue.blockedBy = await this.fetchBlockedBy(
+        restBase,
+        owner,
+        repo,
+        issue.number,
+      );
     }
     return out;
   }
