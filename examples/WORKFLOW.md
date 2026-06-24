@@ -107,7 +107,7 @@ Rules:
   - PR conversation comments on `issues/$PR_NUMBER/comments` — including comments containing
     `<!-- baton-reviewer-finding -->` or `<!-- baton-reviewer-summary -->`, which are Reviewer
     findings that MUST be addressed with code changes and a `baton-agent-reply` response — that
-    do not themselves start with `<!-- baton-agent-reply` or `<!-- baton-progress` (those are the
+    do not themselves start with `<!-- baton-agent-reply` or `<!-- baton-impl-progress` (those are the
     Implementer's own comment types and should be skipped) and do not already have a later agent
     follow-up comment containing `<!-- baton-agent-reply source_comment_id=<comment_id> -->` for
     that comment's ID
@@ -130,7 +130,7 @@ Rules:
   prefix so the implementation workflow's activity can be distinguished from human comments and
   from the reviewer workflow.
 - Report progress by editing a single persistent comment on the issue. The comment must begin
-  with the marker `<!-- baton-progress -->`. On each run, search existing comments for that
+  with the marker `<!-- baton-impl-progress -->`. On each run, search existing comments for that
   marker first; if found, edit it in place; if not found, create it. Do not post multiple
   separate comments. The comment body has two sections:
   1. **Summary section** (overwrite on every run): `Role:` and `Status:` lines immediately after
@@ -143,7 +143,7 @@ Rules:
 
   Example comment format:
   ```
-  <!-- baton-progress -->
+  <!-- baton-impl-progress -->
   Role: Baton Implementer
   Status: in-progress — implementing validation logic
 
