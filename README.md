@@ -239,13 +239,14 @@ comments (model override, timeout, repo filter, and the LiquidJS prompt template
 **Run once**
 
 ```sh
-node --experimental-strip-types scripts/triage/index.ts [TRIAGE.md]
+npm run triage [TRIAGE.md]
+# or: npx tsx scripts/triage/index.ts [TRIAGE.md]
 ```
 
 **Run on a schedule (cron)**
 
 ```sh
-*/30 * * * * cd /path/to/repo && node --experimental-strip-types scripts/triage/index.ts TRIAGE.md
+*/30 * * * * cd /path/to/repo && npx tsx scripts/triage/index.ts TRIAGE.md
 ```
 
 Running every 30 minutes keeps the `ai-ready` queue populated without human intervention — pair
