@@ -100,9 +100,12 @@ Rules:
     the first comment in the thread (`databaseId` of `comments.nodes[0]`)
     (`gh api repos/{{ issue.repository }}/pulls/$PR_NUMBER/comments/<root_databaseId>/replies -f body='<!-- baton-agent-reply --> [Baton Implementer] ...'`).
     Then apply thread-type-specific handling based on the first comment body (`comments.nodes[0].body`):
-    - **Bot thread** (first comment contains `<!-- baton-reviewer-finding`): resolve the thread
-      with the `resolveReviewThread` GraphQL mutation after posting the reply. If the mutation
-      fails, escalate: move the issue to "In Review" (not the chosen review state) and stop.
+    - **Bot thread** (first comment contains `<!-- baton-reviewer-finding`): if no
+      `baton-agent-reply` reply exists in the thread yet, address the finding and post the reply.
+      If a `baton-agent-reply` already exists (partial-failure recovery: a prior run posted the
+      reply but `resolveReviewThread` failed), skip re-posting. In both cases, call
+      `resolveReviewThread`. If the mutation fails, escalate: move the issue to "In Review" (not
+      the chosen review state) and stop.
     - **Human thread** (first comment does not contain `<!-- baton-reviewer-finding`): do not
       resolve the thread; the posted reply is sufficient to mark it as addressed.
   - When all feedback is resolved, push the branch with a normal `git push` (never force-push;
@@ -124,7 +127,11 @@ Rules:
     pagination metadata (`pageInfo { hasNextPage endCursor }`), then paginate review threads and
     thread comments further as needed. A thread is actionable if:
     - it is a **bot thread** (first comment body contains `<!-- baton-reviewer-finding`) and
-      `isResolved` is `false`, or
+      `isResolved` is `false` and no `baton-agent-reply` reply already exists in the thread
+      (normal case), or
+    - it is a **bot thread** (first comment body contains `<!-- baton-reviewer-finding`) and
+      `isResolved` is `false` and a `baton-agent-reply` reply already exists in the thread
+      (partial-failure recovery: a prior run posted the reply but `resolveReviewThread` failed), or
     - it is a **human thread** (first comment body does not contain `<!-- baton-reviewer-finding`)
       and the latest reviewer comment does not already have a later `<!-- baton-agent-reply -->`
       reply in the same thread
