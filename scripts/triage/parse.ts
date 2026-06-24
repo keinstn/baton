@@ -8,24 +8,46 @@ export function stripCodeFence(text: string): string {
     .trim();
 }
 
-// Scan for the first balanced outermost [...] in text; try each candidate in
-// order until one parses as valid JSON. Returns text unchanged as fallback.
+// LLMs sometimes emit conversational preamble/postamble around the JSON array.
+// Scan for the first balanced outermost [...] that parses as an array of objects,
+// respecting quoted strings so brackets inside string values do not affect depth
+// counting and so scalar arrays like [1,2] in prose are not mistaken for the
+// decisions array.
 function extractJsonArray(text: string): string {
   let i = 0;
   while (i < text.length) {
     if (text[i] === "[") {
       let depth = 0;
       let j = i;
+      let inStr = false;
+      let esc = false;
       while (j < text.length) {
-        if (text[j] === "[") depth++;
-        else if (text[j] === "]") {
-          depth--;
-          if (depth === 0) {
-            const candidate = text.slice(i, j + 1);
-            try {
-              JSON.parse(candidate);
-              return candidate;
-            } catch {
+        const ch = text[j];
+        if (esc) {
+          esc = false;
+        } else if (inStr) {
+          if (ch === "\\") esc = true;
+          else if (ch === '"') inStr = false;
+        } else {
+          if (ch === '"') inStr = true;
+          else if (ch === "[") depth++;
+          else if (ch === "]") {
+            depth--;
+            if (depth === 0) {
+              const candidate = text.slice(i, j + 1);
+              try {
+                const arr: unknown = JSON.parse(candidate);
+                if (
+                  Array.isArray(arr) &&
+                  arr.every(
+                    (el: unknown) => typeof el === "object" && el !== null,
+                  )
+                ) {
+                  return candidate;
+                }
+              } catch {
+                // not valid JSON, try next candidate
+              }
               break;
             }
           }

@@ -47,6 +47,16 @@ describe("parseDecisions", () => {
     expect(parseDecisions(text)).toEqual(DECISIONS);
   });
 
+  it("skips scalar array in preamble and extracts decisions array", () => {
+    const text = `See [1,2] for examples.\n${JSON.stringify(DECISIONS)}`;
+    expect(parseDecisions(text)).toEqual(DECISIONS);
+  });
+
+  it("handles closing bracket inside a reason string value", () => {
+    const d = [{ number: 1, decision: "ready", reason: "] edge case" }];
+    expect(parseDecisions(`preamble\n${JSON.stringify(d)}`)).toEqual(d);
+  });
+
   it("throws when input contains no JSON array", () => {
     expect(() => parseDecisions("I'll check each issue.")).toThrow(SyntaxError);
   });
