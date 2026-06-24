@@ -31,7 +31,9 @@ export function runOnce(
         try {
           process.kill(-proc.pid, "SIGKILL");
         } catch {
-          // process group already gone — no further kill needed
+          // process.kill(-pid) fails on Windows (negative PIDs unsupported) —
+          // best-effort direct kill so the child is not left running after timeout
+          proc.kill("SIGKILL");
         }
       } else {
         proc.kill("SIGKILL");
