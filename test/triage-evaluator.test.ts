@@ -4,11 +4,11 @@ import { createEvaluator, renderPrompt } from "../scripts/triage/evaluator.js";
 import type { TriageIssue } from "../scripts/triage/fetcher.js";
 
 // Mock the subprocess module so no real CLIs are spawned
-vi.mock("../scripts/triage/subprocess.js", () => ({
+vi.mock("../scripts/lib/subprocess.js", () => ({
   runOnce: vi.fn(),
 }));
 
-import { runOnce } from "../scripts/triage/subprocess.js";
+import { runOnce } from "../scripts/lib/subprocess.js";
 
 const mockRunOnce = vi.mocked(runOnce);
 
@@ -230,8 +230,8 @@ describe("claude-eval adapter", () => {
     const ev = createEvaluator(config);
     await ev.evaluate([makeIssue()], TEMPLATE, "acme/repo");
 
-    const [, , timeoutMs] = mockRunOnce.mock.calls.at(0) ?? [];
-    expect(timeoutMs).toBe(12_345);
+    const [, , opts] = mockRunOnce.mock.calls.at(0) ?? [];
+    expect(opts).toEqual({ timeoutMs: 12_345 });
   });
 });
 
@@ -432,8 +432,8 @@ describe("copilot-eval adapter", () => {
     const ev = createEvaluator(config);
     await ev.evaluate([makeIssue()], TEMPLATE, "acme/repo");
 
-    const [, , timeoutMs] = mockRunOnce.mock.calls.at(0) ?? [];
-    expect(timeoutMs).toBe(99_000);
+    const [, , opts] = mockRunOnce.mock.calls.at(0) ?? [];
+    expect(opts).toEqual({ timeoutMs: 99_000 });
   });
 });
 

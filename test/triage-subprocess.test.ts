@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { runOnce } from "../scripts/triage/subprocess.js";
+import { runOnce } from "../scripts/lib/subprocess.js";
 
 describe("runOnce", () => {
   it("resolves with stdout when process exits 0", async () => {
@@ -23,8 +23,8 @@ describe("runOnce", () => {
 
   it("rejects with timeout error when process exceeds timeoutMs", async () => {
     // Use a very short timeout so the test runs quickly
-    await expect(runOnce("sleep 10", undefined, 100)).rejects.toThrow(
-      "timed out",
-    );
+    await expect(
+      runOnce("sleep 10", undefined, { timeoutMs: 100 }),
+    ).rejects.toThrow("timed out");
   });
 });

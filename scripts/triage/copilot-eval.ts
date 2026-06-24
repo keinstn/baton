@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { isRecord, shellQuote } from "../../src/util.js";
+import { runOnce } from "../lib/subprocess.js";
 import type { EvaluatorConfig } from "./config.js";
 import type { Evaluator, IssueDecision } from "./evaluator.js";
 import { renderPrompt } from "./evaluator.js";
 import type { TriageIssue } from "./fetcher.js";
 import { parseDecisions } from "./parse.js";
-import { runOnce } from "./subprocess.js";
 
 function extractContent(stdout: string): string {
   const parts: string[] = [];
@@ -62,7 +62,9 @@ export function createCopilotEvaluator(config: EvaluatorConfig): Evaluator {
         command += ` --deny-tool=${shellQuote(tool)}`;
       }
 
-      const stdout = await runOnce(command, undefined, config.timeoutMs);
+      const stdout = await runOnce(command, undefined, {
+        timeoutMs: config.timeoutMs,
+      });
       const content = extractContent(stdout);
       return parseDecisions(content);
     },
