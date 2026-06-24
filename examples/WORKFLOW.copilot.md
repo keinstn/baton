@@ -162,7 +162,7 @@ Rules:
 - Do not resolve review threads on behalf of humans. Leave the discussion state visible unless a
   human reviewer resolves it later.
 - Report progress by editing a single persistent comment on the issue. The comment must begin
-  with the marker `<!-- baton-progress -->`. On each run, search existing comments for that
+  with the marker `<!-- baton-review-progress -->`. On each run, search existing comments for that
   marker first; if found, edit it in place; if not found, create it. Do not post multiple
   separate comments. The comment body has two sections:
   1. **Summary section** (overwrite on every run): `Role:` and `Status:` lines immediately after
@@ -175,7 +175,7 @@ Rules:
 
   Example comment format:
   ```
-  <!-- baton-progress -->
+  <!-- baton-review-progress -->
   Role: Baton Reviewer
   Status: needs_changes — missing edge case in retry logic
 
