@@ -69,6 +69,7 @@ async function main(): Promise<void> {
       continue;
     }
 
+    const fetchedNumbers = new Set(issues.map((i) => i.number));
     const missing = issues
       .map((i) => i.number)
       .filter((n) => !decisions.some((d) => d.number === n));
@@ -78,7 +79,18 @@ async function main(): Promise<void> {
       });
     }
 
-    for (const decision of decisions) {
+    const validDecisions = decisions.filter((d) => {
+      if (!fetchedNumbers.has(d.number)) {
+        repoLogger.warn(
+          "evaluator returned decision for unknown issue, skipping",
+          { issue_number: d.number },
+        );
+        return false;
+      }
+      return true;
+    });
+
+    for (const decision of validDecisions) {
       const issueLogger = repoLogger.child({ issue_number: decision.number });
 
       try {
