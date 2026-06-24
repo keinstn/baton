@@ -10,7 +10,11 @@ export function stripCodeFence(text: string): string {
 
 export function parseDecisions(text: string): IssueDecision[] {
   const clean = stripCodeFence(text);
-  const parsed: unknown = JSON.parse(clean);
+  const start = clean.indexOf("[");
+  const end = clean.lastIndexOf("]");
+  const jsonStr =
+    start >= 0 && end > start ? clean.slice(start, end + 1) : clean;
+  const parsed: unknown = JSON.parse(jsonStr);
   if (!Array.isArray(parsed)) {
     throw new Error("eval: expected JSON array of IssueDecision");
   }
