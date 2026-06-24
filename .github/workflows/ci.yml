@@ -23,7 +23,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      - run: npm ci --foreground-scripts
       - run: npm run lint
 
   typecheck:
@@ -35,7 +35,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      - run: npm ci --foreground-scripts
       - run: npm run typecheck
 
   test:
@@ -51,5 +51,5 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      - run: npm ci --foreground-scripts
       - run: npm run test
