@@ -35,6 +35,11 @@ function str(v: unknown): string | null {
   return typeof v === "string" && v.length > 0 ? v : null;
 }
 
+function resolveStr(v: unknown, env: Env): string | null {
+  const s = str(v);
+  return s === null ? null : resolveEnvValue(s, env);
+}
+
 function section(
   raw: Record<string, unknown>,
   key: string,
@@ -94,32 +99,54 @@ export function parseTriageConfig(
 ): TriageConfig {
   const t = section(raw, "tracker");
 
-  const owner = str(t.owner);
+  const owner = resolveStr(t.owner, env);
   if (!owner) {
     throw new Error("tracker.owner is required in TRIAGE.md");
   }
 
   const projectNumberRaw = t.project_number;
-  if (
-    typeof projectNumberRaw !== "number" ||
-    !Number.isInteger(projectNumberRaw) ||
-    projectNumberRaw <= 0
-  ) {
+  let projectNumber: number;
+  if (typeof projectNumberRaw === "number") {
+    projectNumber = projectNumberRaw;
+  } else if (typeof projectNumberRaw === "string") {
+    const resolved = resolveEnvValue(projectNumberRaw, env);
+    const parsed = resolved !== null ? Number(resolved) : NaN;
+    projectNumber = parsed;
+  } else {
+    projectNumber = NaN;
+  }
+  if (!Number.isInteger(projectNumber) || projectNumber <= 0) {
     throw new Error(
       "tracker.project_number is required and must be a positive integer in TRIAGE.md",
+    );
+  }
+
+  const ownerTypeRaw = t.owner_type;
+  let ownerType: "organization" | "user";
+  if (
+    ownerTypeRaw === undefined ||
+    ownerTypeRaw === null ||
+    ownerTypeRaw === ""
+  ) {
+    ownerType = "organization";
+  } else if (ownerTypeRaw === "organization" || ownerTypeRaw === "user") {
+    ownerType = ownerTypeRaw;
+  } else {
+    throw new Error(
+      `tracker.owner_type must be "organization" or "user" in TRIAGE.md, got: ${String(ownerTypeRaw)}`,
     );
   }
 
   const tokenRaw = str(t.token) ?? "$GITHUB_TOKEN";
   const tracker: TrackerTriageConfig = {
     token: resolveEnvValue(tokenRaw, env),
-    endpoint: str(t.endpoint) ?? "https://api.github.com/graphql",
+    endpoint: resolveStr(t.endpoint, env) ?? "https://api.github.com/graphql",
     owner,
-    ownerType: t.owner_type === "user" ? "user" : "organization",
-    projectNumber: projectNumberRaw,
-    statusField: str(t.status_field) ?? "Status",
-    todoState: str(t.todo_state) ?? "Todo",
-    aiReadyLabel: str(t.ai_ready_label) ?? "ai-ready",
+    ownerType,
+    projectNumber,
+    statusField: resolveStr(t.status_field, env) ?? "Status",
+    todoState: resolveStr(t.todo_state, env) ?? "Todo",
+    aiReadyLabel: resolveStr(t.ai_ready_label, env) ?? "ai-ready",
   };
 
   const e = section(raw, "evaluator");
@@ -149,8 +176,8 @@ export function parseTriageConfig(
 
   const evaluator: EvaluatorConfig = {
     kind,
-    command: str(e.command) ?? defaultCommand,
-    model: str(e.model),
+    command: resolveStr(e.command, env) ?? defaultCommand,
+    model: resolveStr(e.model, env),
     timeoutMs,
   };
 

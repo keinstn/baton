@@ -162,6 +162,135 @@ describe("$VAR resolution", () => {
     );
     expect(config.tracker.token).toBe("literal-token");
   });
+
+  it("resolves tracker.owner from $VAR", () => {
+    const config = parseTriageConfig(
+      {
+        tracker: { owner: "$GITHUB_OWNER", project_number: 1 },
+        evaluator: { kind: "claude_code" },
+      },
+      { GITHUB_OWNER: "myorg" },
+    );
+    expect(config.tracker.owner).toBe("myorg");
+  });
+
+  it("throws when tracker.owner $VAR is unset", () => {
+    expect(() =>
+      parseTriageConfig(
+        {
+          tracker: { owner: "$GITHUB_OWNER", project_number: 1 },
+          evaluator: { kind: "claude_code" },
+        },
+        {},
+      ),
+    ).toThrow(/tracker\.owner/);
+  });
+
+  it("resolves tracker.project_number from $VAR string", () => {
+    const config = parseTriageConfig(
+      {
+        tracker: { owner: "acme", project_number: "$PROJECT_NUMBER" },
+        evaluator: { kind: "claude_code" },
+      },
+      { PROJECT_NUMBER: "42" },
+    );
+    expect(config.tracker.projectNumber).toBe(42);
+  });
+
+  it("throws when tracker.project_number $VAR resolves to non-integer", () => {
+    expect(() =>
+      parseTriageConfig(
+        {
+          tracker: { owner: "acme", project_number: "$PROJECT_NUMBER" },
+          evaluator: { kind: "claude_code" },
+        },
+        { PROJECT_NUMBER: "not-a-number" },
+      ),
+    ).toThrow(/tracker\.project_number/);
+  });
+
+  it("throws when tracker.project_number $VAR is unset", () => {
+    expect(() =>
+      parseTriageConfig(
+        {
+          tracker: { owner: "acme", project_number: "$PROJECT_NUMBER" },
+          evaluator: { kind: "claude_code" },
+        },
+        {},
+      ),
+    ).toThrow(/tracker\.project_number/);
+  });
+
+  it("resolves evaluator.command from $VAR", () => {
+    const config = parseTriageConfig(
+      {
+        tracker: { owner: "acme", project_number: 1 },
+        evaluator: { kind: "claude_code", command: "$AGENT_CMD" },
+      },
+      { AGENT_CMD: "/custom/claude" },
+    );
+    expect(config.evaluator.command).toBe("/custom/claude");
+  });
+
+  it("falls back to default command when evaluator.command $VAR is unset", () => {
+    const config = parseTriageConfig(
+      {
+        tracker: { owner: "acme", project_number: 1 },
+        evaluator: { kind: "claude_code", command: "$MISSING_CMD" },
+      },
+      {},
+    );
+    expect(config.evaluator.command).toBe("claude");
+  });
+});
+
+describe("tracker.owner_type validation", () => {
+  it("defaults to 'organization' when owner_type is omitted", () => {
+    const config = parseTriageConfig(BASE_RAW, {});
+    expect(config.tracker.ownerType).toBe("organization");
+  });
+
+  it("accepts explicit 'organization'", () => {
+    const config = parseTriageConfig(
+      {
+        tracker: {
+          owner: "acme",
+          project_number: 1,
+          owner_type: "organization",
+        },
+        evaluator: { kind: "claude_code" },
+      },
+      {},
+    );
+    expect(config.tracker.ownerType).toBe("organization");
+  });
+
+  it("accepts 'user'", () => {
+    const config = parseTriageConfig(
+      {
+        tracker: { owner: "acme", project_number: 1, owner_type: "user" },
+        evaluator: { kind: "claude_code" },
+      },
+      {},
+    );
+    expect(config.tracker.ownerType).toBe("user");
+  });
+
+  it("throws on unsupported owner_type values like typos", () => {
+    expect(() =>
+      parseTriageConfig(
+        {
+          tracker: {
+            owner: "acme",
+            project_number: 1,
+            owner_type: "organisation",
+          },
+          evaluator: { kind: "claude_code" },
+        },
+        {},
+      ),
+    ).toThrow(/tracker\.owner_type/);
+  });
 });
 
 describe("evaluator.command defaults", () => {
