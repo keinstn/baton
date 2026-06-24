@@ -265,6 +265,51 @@ npm run triage [TRIAGE.md]
 Running every 30 minutes keeps the `ai-ready` queue populated without human intervention — pair
 it with a Baton instance polling the same board.
 
+## Review Sync (one-shot board state sync)
+
+The `scripts/review-sync/` companion CLI reconciles Project Status for issues in review-related
+columns by checking linked open PR `reviewThreads` resolution state.
+
+For each issue in `tracker.source_states`:
+
+- If any linked open PR has unresolved `reviewThreads` → move issue to
+  `tracker.in_progress_state`
+- If all linked open PRs have all threads resolved → move issue to
+  `tracker.in_review_state`
+- If there are no linked open PRs, or linked open PRs have no review threads → skip (no move)
+
+`review-sync` discovers linked PRs from issue cross-references and uses only
+`reviewThreads.isResolved` as the move signal.
+
+**Minimal `REVIEW_SYNC.md` config**
+
+```yaml
+tracker:
+  token: $GITHUB_TOKEN
+  owner: my-org
+  owner_type: organization   # organization | user (default: organization)
+  project_number: 5
+  source_states:
+    - In Review
+    - Agent Review
+  in_progress_state: In Progress
+  in_review_state: In Review
+```
+
+**Run once**
+
+```sh
+npm run review-sync [REVIEW_SYNC.md]
+# or: npx tsx scripts/review-sync/index.ts [REVIEW_SYNC.md]
+```
+
+**Dry run (no mutation)**
+
+```sh
+npm run review-sync -- --dry-run
+npm run review-sync -- [REVIEW_SYNC.md] --dry-run
+```
+
 ## How it works (one paragraph)
 
 Every `polling.interval_ms`, Baton queries the configured Project board for issues whose Status is
