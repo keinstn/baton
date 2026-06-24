@@ -21,8 +21,11 @@ function baseRaw(): Record<string, unknown> {
 
 describe("parseReviewConfig workspace root expansion", () => {
   it("resolves workspace.root relative to the REVIEW.md directory", () => {
-    const config = parseReviewConfig(baseRaw(), {}, "/tmp/review-root");
-    expect(config.workspace.root).toBe("/tmp/review-root/workspaces/review");
+    const reviewDir = path.join(path.sep, "tmp", "review-root");
+    const config = parseReviewConfig(baseRaw(), {}, reviewDir);
+    expect(config.workspace.root).toBe(
+      path.resolve(reviewDir, "workspaces/review"),
+    );
   });
 
   it("expands home marker with the shared expandPath behavior", () => {
