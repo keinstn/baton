@@ -78,6 +78,14 @@ Rules:
 - Review the PR as it exists now. Use `gh pr diff`, `gh pr view`, `gh pr checks`, `gh api`, and
   local read-only inspection as needed. Take existing review threads and comments into account so
   you do not re-raise feedback that is already resolved in the current diff.
+- When evaluating inline review threads to determine whether feedback has been addressed, apply
+  the following per-thread rules (fetch threads via `gh api graphql` including `isResolved` and
+  all comment bodies):
+  - **Bot thread** (first comment body contains `<!-- baton-reviewer-finding`): skip the thread
+    if `isResolved` is `true`; it has been resolved by the implementation workflow.
+  - **Human thread** (first comment body does not contain `<!-- baton-reviewer-finding`): skip
+    the thread if it already contains a subsequent reply with `<!-- baton-agent-reply -->` in the
+    same thread; that reply signals the implementer has addressed it.
 - Every PR comment that this workflow creates must include a Baton reviewer marker plus a visible
   label:
   - summary comment marker:
